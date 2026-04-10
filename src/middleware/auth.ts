@@ -1,45 +1,32 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import { JWT_SECRET } from "../config/env";
-import { ITokenPayload } from "../types/userTypes";
+import { env } from "../config/env";
+import { AppError } from "../errors/AppError";
+import { AuthTokenPayload } from "../types/auth";
 
-// Extendendo o Request para incluir o usuário autenticado
-declare global {
-  namespace Express {
-    interface Request {
-      user?: ITokenPayload;
-    }
-  }
-}
-
-export default function auth(req: Request, res: Response, next: NextFunction): void {
+export default function auth(req: Request, _res: Response, next: NextFunction): void {
   try {
-    // Verifica se o token foi enviado no cabeçalho Authorization
     const authHeader = req.header("Authorization");
 
     if (!authHeader) {
-      res.status(401).json({ success: false, message: "Acesso negado. Nenhum token fornecido." });
-      return; // 🚀 IMPORTANTE: Garantir que a execução pare aqui
+      throw new AppError(401, "Acesso negado. Nenhum token fornecido.", "AUTH_REQUIRED");
     }
 
-    // O token pode vir no formato "Bearer token_aqui", então removemos "Bearer "
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+    const decoded = jwt.verify(token, env.JWT_SECRET) as AuthTokenPayload;
 
-    // Decodifica o token
-    const decoded = jwt.verify(token, JWT_SECRET) as ITokenPayload;
-
-    if (!decoded || !decoded.id) {
-      res.status(401).json({ success: false, message: "Token inválido." });
-      return; // 🚀 IMPORTANTE: Garantir que a execução pare aqui
+    if (!decoded?.id) {
+      throw new AppError(401, "Token invalido.", "INVALID_TOKEN");
     }
 
-    // Atribui o usuário autenticado ao request
     req.user = decoded;
-
-    // Continua para a próxima função
     next();
   } catch (error) {
-    res.status(401).json({ success: false, message: "Token inválido ou expirado." });
-    return; // 🚀 IMPORTANTE: Garantir que a execução pare aqui
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
+
+    next(new AppError(401, "Token invalido ou expirado.", "INVALID_TOKEN"));
   }
 }

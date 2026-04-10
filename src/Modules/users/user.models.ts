@@ -1,30 +1,46 @@
 import prisma from "../../config/db";
-import { IUser } from "../../types/userTypes";
+import { AppError } from "../../errors/AppError";
+import { IUser, UpdateProfileInput } from "./user.types";
 
 export default class UserModel {
   static async createUser(nome: string, email: string, senhaHash: string): Promise<IUser> {
-    if (!nome || !email || !senhaHash) {
-      throw new Error("Dados do usuário incompletos.");
-    }
-
-    console.log("Criando usuário:", { nome, email, senhaHash });
-
-    return await prisma.user.create({
+    return prisma.user.create({
       data: { nome, email, senha: senhaHash },
     });
   }
 
   static async findByEmail(email: string): Promise<IUser | null> {
-    if (!email) {
-      throw new Error("Email não pode ser undefined.");
-    }
-
-    return await prisma.user.findUnique({ where: { email } });
+    return prisma.user.findUnique({ where: { email } });
   }
 
-  static async getAllUsers(): Promise<IUser[]> {
-    return await prisma.user.findMany({
-      select: { id: true, nome: true, email: true, senha: true },
+  static async findPublicById(id: string) {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new AppError(404, "Usuario nao encontrado.", "USER_NOT_FOUND");
+    }
+
+    return user;
+  }
+
+  static async updateProfile(id: string, input: UpdateProfileInput) {
+    return prisma.user.update({
+      where: { id },
+      data: input,
+      select: {
+        id: true,
+        nome: true,
+        email: true,
+        role: true,
+      },
     });
   }
 }

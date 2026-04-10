@@ -1,8 +1,12 @@
-import { Request } from "express";
-import { ITokenPayload } from "./userTypes";
+import { AuthTokenPayload } from "./auth";
 
-declare module "express" {
-  export interface Request {
-    user?: ITokenPayload;
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthTokenPayload;
+      requestId?: string;
+    }
   }
 }
+
+export {};

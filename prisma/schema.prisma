@@ -1,83 +1,106 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider  = "postgresql"
-  directUrl = env("DIRECT_URL")
   url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  PLAYER
+  ADMIN
+}
+
+enum ShopProductAssetKind {
+  ITEM
+  EQUIPMENT
+  COINS
+}
+
+enum PaymentOrderStatus {
+  PENDING
+  PAID
+  FULFILLED
+  FAILED
+  CANCELED
+}
+
+enum GameplayDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  ELITE
 }
 
 model User {
-  id         String      @id @default(uuid())
-  nome       String
-  email      String      @unique
-  senha      String
-  characters Character[] @relation("UserToCharacter")
+  id            String         @id @default(uuid())
+  nome          String
+  email         String         @unique
+  senha         String
+  role          UserRole       @default(PLAYER)
+  characters    Character[]    @relation("UserToCharacter")
+  paymentOrders PaymentOrder[]
 }
 
 model Character {
-  id             String  @id @default(uuid())
+  id             String         @id @default(uuid())
   userId         String
   name           String
-  level          Int     @default(1)
-  xp             Int     @default(0) // 💥 XP do jogador
-  lastCheckpoint String? // ✅ Último checkpoint (nome da missão ou posição)
-  posX           Float? // ✅ Posição X
-  posY           Float? // ✅ Posição Y
-  posZ           Float? // ✅ Posição Z
+  level          Int            @default(1)
+  xp             Int            @default(0)
+  lastCheckpoint String?
+  posX           Float?
+  posY           Float?
+  posZ           Float?
+  inventoryId    String?        @unique
+  classId        String
+  createdAt      DateTime       @default(now())
 
-  inventoryId String?  @unique
-  classId     String
-  createdAt   DateTime @default(now())
-
-  user         User          @relation("UserToCharacter", fields: [userId], references: [id])
-  inventory    Inventory?    @relation(fields: [inventoryId], references: [id])
-  class        Class         @relation("ClassToCharacter", fields: [classId], references: [id])
-  transactions Transaction[] @relation
+  user          User           @relation("UserToCharacter", fields: [userId], references: [id])
+  inventory     Inventory?     @relation(fields: [inventoryId], references: [id])
+  class         Class          @relation("ClassToCharacter", fields: [classId], references: [id])
+  transactions  Transaction[]
+  paymentOrders PaymentOrder[]
+  rewardClaims  RewardClaim[]
 }
 
 model Inventory {
-  id         String      @id @default(uuid())
-  coins      Int         @default(0)
-  items      Item[]
-  equipments Equipment[]
-  character  Character?  @relation
-
-  characterId String? @unique
+  id          String      @id @default(uuid())
+  coins       Int         @default(0)
+  items       Item[]
+  equipments  Equipment[]
+  character   Character?
+  characterId String?     @unique
 }
 
 model Item {
-  id          String  @id @default(uuid())
+  id          String    @id @default(uuid())
   name        String
   value       Int
   category    String
   type        String
   img         String
   effect      String?
-  quantity    Int     @default(1)
+  quantity    Int       @default(1)
   inventoryId String
+  monsterId   String?
 
   inventory Inventory @relation(fields: [inventoryId], references: [id])
   monster   Monster?  @relation
-
-  monsterId String?
 }
 
 model Equipment {
-  id          String  @id @default(uuid())
+  id          String    @id @default(uuid())
   name        String
   value       Int
   category    String
   type        String
   img         String
   effect      String?
+  isEquipped  Boolean   @default(false)
+  equippedAt  DateTime?
   inventoryId String
 
   inventory Inventory @relation(fields: [inventoryId], references: [id])
@@ -85,7 +108,7 @@ model Equipment {
 
 model Class {
   id          String      @id @default(uuid())
-  name        String
+  name        String      @unique
   modifier    String
   description String
   passive     String?
@@ -93,16 +116,33 @@ model Class {
 }
 
 model BountyHunt {
-  id        String   @id @default(uuid())
-  monsterId String
-  reward    Int
-  timeLimit DateTime
-  status    String
+  id                 String             @id @default(uuid())
+  title              String
+  description        String?
+  monsterId          String
+  recommendedLevel   Int                @default(1)
+  difficulty         GameplayDifficulty @default(EASY)
+  reward             Int
+  rewardXp           Int                @default(0)
+  rewardItemName     String?
+  rewardItemCategory String?
+  rewardItemType     String?
+  rewardItemImg      String?
+  rewardItemEffect   String?
+  rewardItemValue    Int?
+  rewardItemQuantity Int                @default(1)
+  timeLimit          DateTime
+  status             String
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  monster Monster @relation(fields: [monsterId], references: [id])
 }
 
 model Monster {
   id         String  @id @default(uuid())
-  name       String
+  name       String  @unique
   level      Int
   health     Int
   attack     Int
@@ -110,15 +150,132 @@ model Monster {
   experience Int
   dropItemId String? @unique
 
-  dropItem Item? @relation(fields: [dropItemId], references: [id])
+  dropItem Item?         @relation(fields: [dropItemId], references: [id])
+  bounties BountyHunt[]
+}
+
+model MissionDefinition {
+  id                 String             @id @default(uuid())
+  title              String
+  description        String?
+  difficulty         GameplayDifficulty @default(EASY)
+  recommendedLevel   Int                @default(1)
+  enemyName          String
+  enemyLevel         Int
+  enemyHealth        Int
+  enemyAttack        Int
+  enemyDefense       Int
+  rewardXp           Int
+  rewardCoins        Int
+  rewardItemName     String?
+  rewardItemCategory String?
+  rewardItemType     String?
+  rewardItemImg      String?
+  rewardItemEffect   String?
+  rewardItemValue    Int?
+  rewardItemQuantity Int                @default(1)
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model TrainingDefinition {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  trainingType    String
+  xpReward        Int
+  coinsReward     Int      @default(0)
+  cooldownSeconds Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model NpcDefinition {
+  id                 String   @id @default(uuid())
+  name               String
+  role               String
+  interactionType    String
+  description        String?
+  dialogue           String?
+  xpReward           Int      @default(0)
+  coinsReward        Int      @default(0)
+  rewardItemName     String?
+  rewardItemCategory String?
+  rewardItemType     String?
+  rewardItemImg      String?
+  rewardItemEffect   String?
+  rewardItemValue    Int?
+  rewardItemQuantity Int      @default(1)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model Transaction {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   characterId String
   type        String
   value       Int
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
+
+  character Character @relation(fields: [characterId], references: [id])
+}
+
+model ShopProduct {
+  id             String               @id @default(uuid())
+  slug           String               @unique
+  name           String
+  description    String?
+  category       String
+  type           String
+  img            String
+  effect         String?
+  assetKind      ShopProductAssetKind
+  price          Int
+  currency       String               @default("BRL")
+  rewardCoins    Int                  @default(0)
+  rewardQuantity Int                  @default(1)
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  paymentOrders PaymentOrder[]
+}
+
+model PaymentOrder {
+  id                String             @id @default(uuid())
+  userId            String
+  characterId       String
+  productId         String
+  quantity          Int
+  unitPrice         Int
+  totalPrice        Int
+  currency          String             @default("BRL")
+  status            PaymentOrderStatus @default(PENDING)
+  provider          String?
+  providerReference String?            @unique
+  providerPaymentId String?            @unique
+  failureReason     String?
+  paidAt            DateTime?
+  fulfilledAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id])
+  character Character   @relation(fields: [characterId], references: [id])
+  product   ShopProduct @relation(fields: [productId], references: [id])
+}
+
+model RewardClaim {
+  id          String   @id @default(uuid())
+  characterId String
+  claimKey    String   @unique
+  type        String
+  value       Int
+  metadata    String?
+  claimedAt   DateTime @default(now())
 
   character Character @relation(fields: [characterId], references: [id])
 }

@@ -1,19 +1,37 @@
 import { Router } from "express";
-import { getCharacters, createCharacter, updateCharacter, deleteCharacter } from "./character.controller";
 import auth from "../../middleware/auth";
+import { validate } from "../../middleware/validate";
+import {
+  createCharacter,
+  deleteCharacter,
+  getCharacterById,
+  getCharacterSummary,
+  getCharacters,
+  listClasses,
+  updateCharacter,
+  updateCharacterPosition,
+  updateCharacterProgress,
+} from "./character.controller";
+import {
+  validateCreateCharacter,
+  validateUpdateCharacterPosition,
+  validateUpdateCharacterProfile,
+  validateUpdateCharacterProgress,
+} from "./character.schema";
 
 const router = Router();
 
-// Criar personagem
-router.post("/create", auth, createCharacter);
+router.use(auth);
 
-// Atualizar personagem (ex: progresso, XP, etc.)
-router.put("/:id", auth, updateCharacter);
-
-// Deletar personagem
-router.delete("/:id", auth, deleteCharacter);
-
-// (Opcional) Listar personagens do usuário
- router.get("/", auth, getCharacters);
+router.get("/classes", listClasses);
+router.get("/", getCharacters);
+router.post("/", validate(validateCreateCharacter), createCharacter);
+router.post("/create", validate(validateCreateCharacter), createCharacter);
+router.get("/:id", getCharacterById);
+router.get("/:id/summary", getCharacterSummary);
+router.put("/:id", validate(validateUpdateCharacterProfile), updateCharacter);
+router.patch("/:id/progress", validate(validateUpdateCharacterProgress), updateCharacterProgress);
+router.patch("/:id/position", validate(validateUpdateCharacterPosition), updateCharacterPosition);
+router.delete("/:id", deleteCharacter);
 
 export default router;

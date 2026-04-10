@@ -1,80 +1,64 @@
 import { Request, Response } from "express";
+import { asyncHandler } from "../../utils/asyncHandler";
+import { sendSuccess } from "../../utils/http";
+import { requireString, requireUserId } from "../../utils/validation";
 import { CharacterService } from "./character.service";
 
-export const createCharacter = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const userId = req.user?.id; // 🔥 Recupera o `userId` do token JWT
-    const { nome, classId } = req.body; // 🔥 Recebe o nome do personagem
+export const listClasses = asyncHandler(async (_req: Request, res: Response) => {
+  const classes = await CharacterService.listClasses();
+  sendSuccess(res, 200, { classes });
+});
 
-    if (!userId) {
-      res.status(401).json({ success: false, message: "Usuário não autenticado." });
-      return;
-    }
+export const createCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const character = await CharacterService.createCharacter(userId, req.body);
+  sendSuccess(res, 201, { character }, "Personagem criado com sucesso.");
+});
 
-    if (!nome) {
-      res.status(400).json({ success: false, message: "O nome do personagem é obrigatório." });
-      return;
-    }
+export const getCharacters = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characters = await CharacterService.getCharactersByUser(userId);
+  sendSuccess(res, 200, { characters });
+});
 
-    // Criar o personagem
-    const newCharacter = await CharacterService.createCharacter(userId, nome, classId || 1); // 🔥 Define classe padrão
+export const getCharacterById = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const character = await CharacterService.getCharacterById(userId, characterId);
+  sendSuccess(res, 200, { character });
+});
 
-    res.status(201).json({ success: true, character: newCharacter });
-  } catch (error) {
-    console.error("❌ Erro ao criar personagem:", error);
-    res.status(500).json({ success: false, message: "Erro ao criar personagem." });
-  }
-  
-};
-export const updateCharacter = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const userId = req.user?.id;
-      const characterId = req.params.id;
-      const updates = req.body;
-      console.log("🚀 Atualizações recebidas:", updates);
-  
-      if (!userId) {
-        res.status(401).json({ success: false, message: "Usuário não autenticado." });
-        return;
-      }
-  
-      const updated = await CharacterService.updateCharacter(userId, characterId, updates);
-      res.status(200).json({ success: true, character: updated });
-    } catch (error) {
-      console.error("❌ Erro ao atualizar personagem:", error);
-      res.status(500).json({ success: false, message: "Erro ao atualizar personagem." });
-    }
-  };
-    export const deleteCharacter = async (req: Request, res: Response): Promise<void> => {
-        try {
-        const userId = req.user?.id;
-        const characterId = req.params.id;
-        console.log("🚀 ID do personagem:", characterId);
-        if (!userId) {
-            res.status(401).json({ success: false, message: "Usuário não autenticado." });
-            return;
-        }
-    
-        const deleted = await CharacterService.deleteCharacter(userId, characterId);
-        res.status(200).json({ success: true, message: deleted.message });
-        } catch (error) {
-        console.error("❌ Erro ao excluir personagem:", error);
-        res.status(500).json({ success: false, message: "Erro ao excluir personagem." });
-        }
-    };  
-    export const getCharacters = async (req: Request, res: Response): Promise<void> => {
-        try {
-          const userId = req.user?.id;
-      
-          if (!userId) {
-            res.status(401).json({ success: false, message: "Usuário não autenticado." });
-            return;
-          }
-      
-          const characters = await CharacterService.getCharactersByUser(userId);
-          res.status(200).json({ success: true, characters });
-        } catch (error) {
-          console.error("❌ Erro ao buscar personagens:", error);
-          res.status(500).json({ success: false, message: "Erro ao buscar personagens." });
-        }
-      };
+export const getCharacterSummary = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const summary = await CharacterService.getCharacterSummary(userId, characterId);
+  sendSuccess(res, 200, { summary });
+});
+
+export const updateCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const character = await CharacterService.updateCharacterProfile(userId, characterId, req.body);
+  sendSuccess(res, 200, { character }, "Personagem atualizado com sucesso.");
+});
+
+export const updateCharacterProgress = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const character = await CharacterService.updateCharacterProgress(userId, characterId, req.body);
+  sendSuccess(res, 200, { character }, "Progresso atualizado com sucesso.");
+});
+
+export const updateCharacterPosition = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const character = await CharacterService.updateCharacterPosition(userId, characterId, req.body);
+  sendSuccess(res, 200, { character }, "Posicao atualizada com sucesso.");
+});
+
+export const deleteCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const result = await CharacterService.deleteCharacter(userId, characterId);
+  sendSuccess(res, 200, result);
+});
