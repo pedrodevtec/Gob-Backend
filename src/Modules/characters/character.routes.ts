@@ -5,6 +5,8 @@ import {
   createCharacter,
   deleteCharacter,
   getCharacterById,
+  getPublicCharacterProfile,
+  getCharacterRankings,
   getCharacterSummary,
   getCharacters,
   listClasses,
@@ -25,6 +27,8 @@ router.use(auth);
 
 router.get("/classes", listClasses);
 router.get("/", getCharacters);
+router.get("/rankings", getCharacterRankings);
+router.get("/:id/public-profile", getPublicCharacterProfile);
 router.post("/", validate(validateCreateCharacter), createCharacter);
 router.post("/create", validate(validateCreateCharacter), createCharacter);
 router.get("/:id", getCharacterById);

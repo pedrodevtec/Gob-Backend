@@ -9,6 +9,165 @@ import {
 } from "./character.types";
 
 export class CharacterService {
+  static async getRankings(limit = 10) {
+    const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+
+    const [highestLevel, missionGroups, bountyGroups] = await prisma.$transaction([
+      prisma.character.findMany({
+        take: safeLimit,
+        orderBy: [{ level: "desc" }, { xp: "desc" }, { createdAt: "asc" }],
+        include: {
+          class: true,
+          inventory: {
+            select: {
+              coins: true,
+            },
+          },
+        },
+      }),
+      prisma.characterActionLog.groupBy({
+        by: ["characterId"],
+        where: {
+          actionType: "MISSION",
+          outcome: "WIN",
+        },
+        _count: {
+          characterId: true,
+        },
+        orderBy: {
+          _count: {
+            characterId: "desc",
+          },
+        },
+        take: safeLimit,
+      }),
+      prisma.characterActionLog.groupBy({
+        by: ["characterId"],
+        where: {
+          actionType: "BOUNTY_HUNT",
+          outcome: "WIN",
+        },
+        _count: {
+          characterId: true,
+        },
+        orderBy: {
+          _count: {
+            characterId: "desc",
+          },
+        },
+        take: safeLimit,
+      }),
+    ]);
+
+    const rankedIds = Array.from(
+      new Set([...missionGroups.map((entry) => entry.characterId), ...bountyGroups.map((entry) => entry.characterId)])
+    );
+
+    const rankedCharacters = rankedIds.length
+      ? await prisma.character.findMany({
+          where: {
+            id: {
+              in: rankedIds,
+            },
+          },
+          include: {
+            class: true,
+            inventory: {
+              select: {
+                coins: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    const rankedCharacterMap = new Map(rankedCharacters.map((character) => [character.id, character]));
+    const getGroupedCount = (entry: { _count?: true | { characterId?: number } }) =>
+      typeof entry._count === "object" && entry._count ? entry._count.characterId ?? 0 : 0;
+
+    const formatEntry = (
+      character: {
+        id: string;
+        name: string;
+        level: number;
+        xp: number;
+        currentHealth: number;
+        status: string;
+        class: {
+          id: string;
+          name: string;
+          modifier: string;
+        };
+        inventory: {
+          coins: number;
+        } | null;
+      },
+      position: number,
+      score: number,
+      metric: "LEVEL" | "MISSIONS" | "BOUNTIES"
+    ) => ({
+      position,
+      score,
+      metric,
+      character: {
+        id: character.id,
+        name: character.name,
+        level: character.level,
+        xp: character.xp,
+        currentHealth: character.currentHealth,
+        status: character.status,
+        coins: character.inventory?.coins ?? 0,
+        class: {
+          id: character.class.id,
+          name: character.class.name,
+          modifier: character.class.modifier,
+        },
+      },
+    });
+
+    return {
+      limit: safeLimit,
+      generatedAt: new Date(),
+      rankings: {
+        highestLevel: highestLevel.map((character, index) =>
+          formatEntry(character, index + 1, character.level, "LEVEL")
+        ),
+        mostMissions: missionGroups
+          .map((entry, index) => {
+            const character = rankedCharacterMap.get(entry.characterId);
+
+            if (!character) {
+              return null;
+            }
+
+            return formatEntry(
+              character,
+              index + 1,
+              getGroupedCount(entry),
+              "MISSIONS"
+            );
+          })
+          .filter(Boolean),
+        mostBounties: bountyGroups
+          .map((entry, index) => {
+            const character = rankedCharacterMap.get(entry.characterId);
+
+            if (!character) {
+              return null;
+            }
+
+            return formatEntry(
+              character,
+              index + 1,
+              getGroupedCount(entry),
+              "BOUNTIES"
+            );
+          })
+          .filter(Boolean),
+      },
+    };
+  }
+
   static async listClasses() {
     return prisma.class.findMany({
       orderBy: { name: "asc" },
@@ -92,6 +251,88 @@ export class CharacterService {
     }
 
     return character;
+  }
+
+  static async getPublicCharacterProfile(characterId: string) {
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      include: {
+        class: true,
+        inventory: {
+          include: {
+            equipments: true,
+          },
+        },
+      },
+    });
+
+    if (!character) {
+      throw new AppError(404, "Personagem nao encontrado.", "CHARACTER_NOT_FOUND");
+    }
+
+    const equippedEffects = character.inventory?.equipments
+      .filter((entry) => entry.isEquipped)
+      .map((entry) => entry.effect) ?? [];
+
+    const stats = deriveCharacterStats({
+      level: character.level,
+      classModifier: character.class.modifier,
+      equipmentEffects: equippedEffects,
+    });
+
+    const [missionsCompleted, bountiesCompleted] = await prisma.$transaction([
+      prisma.characterActionLog.count({
+        where: {
+          characterId,
+          actionType: "MISSION",
+          outcome: "WIN",
+        },
+      }),
+      prisma.characterActionLog.count({
+        where: {
+          characterId,
+          actionType: "BOUNTY_HUNT",
+          outcome: "WIN",
+        },
+      }),
+    ]);
+
+    return {
+      id: character.id,
+      name: character.name,
+      level: character.level,
+      xp: character.xp,
+      currentHealth: character.currentHealth,
+      status: character.status,
+      lastCombatAt: character.lastCombatAt,
+      lastRecoveredAt: character.lastRecoveredAt,
+      class: {
+        id: character.class.id,
+        name: character.class.name,
+        modifier: character.class.modifier,
+        description: character.class.description,
+        passive: character.class.passive,
+      },
+      stats,
+      progression: {
+        missionsCompleted,
+        bountiesCompleted,
+      },
+      equipment: {
+        totalEquipped: character.inventory?.equipments.filter((entry) => entry.isEquipped).length ?? 0,
+        equipped: (character.inventory?.equipments ?? [])
+          .filter((entry) => entry.isEquipped)
+          .map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            category: entry.category,
+            type: entry.type,
+            img: entry.img,
+            effect: entry.effect,
+            equippedAt: entry.equippedAt,
+          })),
+      },
+    };
   }
 
   static async updateCharacterProfile(

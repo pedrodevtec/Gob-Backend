@@ -5,7 +5,29 @@ import { env } from "../../config/env";
 import { AppError } from "../../errors/AppError";
 import { InventoryService } from "../inventory/inventory.service";
 import { CharacterService } from "../characters/character.service";
-import { CreatePaymentOrderInput, PaymentWebhookInput, PurchaseInput } from "./shop.types";
+import {
+  CreatePaymentOrderInput,
+  MarketSaleInput,
+  PaymentWebhookInput,
+  PurchaseInput,
+} from "./shop.types";
+
+const MARKET_BUYABLE_ASSET_KINDS: ShopProductAssetKind[] = [
+  ShopProductAssetKind.ITEM,
+  ShopProductAssetKind.EQUIPMENT,
+];
+const ITEM_SELL_RATE = 0.6;
+const EQUIPMENT_SELL_RATE = 0.7;
+
+export const resolveMarketSellPrice = (
+  value: number,
+  assetType: "ITEM" | "EQUIPMENT" | ShopProductAssetKind
+) => {
+  const normalizedAssetType = String(assetType).toUpperCase() === "ITEM" ? "ITEM" : "EQUIPMENT";
+  const multiplier = normalizedAssetType === "ITEM" ? ITEM_SELL_RATE : EQUIPMENT_SELL_RATE;
+
+  return Math.max(1, Math.floor(value * multiplier));
+};
 
 export class ShopService {
   static async getCatalog() {
@@ -15,14 +37,76 @@ export class ShopService {
     });
   }
 
+  static async getMarketOverview(userId: string, characterId: string) {
+    const inventory = await InventoryService.getInventoryByCharacter(userId, characterId);
+    const buyCatalog = await prisma.shopProduct.findMany({
+      where: {
+        isActive: true,
+        assetKind: {
+          in: MARKET_BUYABLE_ASSET_KINDS,
+        },
+      },
+      orderBy: [{ category: "asc" }, { price: "asc" }, { name: "asc" }],
+    });
+
+    return {
+      characterId,
+      wallet: {
+        inventoryId: inventory.id,
+        coins: inventory.coins,
+      },
+      buyCatalog: buyCatalog.map((product) => ({
+        id: product.id,
+        slug: product.slug,
+        name: product.name,
+        description: product.description,
+        category: product.category,
+        type: product.type,
+        img: product.img,
+        effect: product.effect,
+        assetKind: product.assetKind,
+        buyPrice: product.price,
+        currency: "COINS",
+        rewardQuantity: product.rewardQuantity,
+        suggestedSellPrice: resolveMarketSellPrice(product.price, product.assetKind),
+        canAfford: inventory.coins >= product.price,
+      })),
+      sellableItems: inventory.items.map((item) => {
+        const unitSellPrice = resolveMarketSellPrice(item.value, "ITEM");
+
+        return {
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          type: item.type,
+          img: item.img,
+          effect: item.effect,
+          quantity: item.quantity,
+          unitSellPrice,
+          totalSellPrice: unitSellPrice * item.quantity,
+        };
+      }),
+      sellableEquipments: inventory.equipments.map((equipment) => ({
+        id: equipment.id,
+        name: equipment.name,
+        category: equipment.category,
+        type: equipment.type,
+        img: equipment.img,
+        effect: equipment.effect,
+        isEquipped: equipment.isEquipped,
+        unitSellPrice: resolveMarketSellPrice(equipment.value, "EQUIPMENT"),
+      })),
+    };
+  }
+
   static async purchaseWithCoins(userId: string, input: PurchaseInput) {
     const product = await this.findActiveProduct(input.productId);
 
-    if (product.assetKind === ShopProductAssetKind.COINS) {
+    if (!MARKET_BUYABLE_ASSET_KINDS.includes(product.assetKind)) {
       throw new AppError(
         409,
-        "Pacotes de moedas devem ser adquiridos pelo fluxo de pagamento externo.",
-        "INVALID_COIN_PURCHASE"
+        "Produto indisponivel para compra com coins no mercado.",
+        "INVALID_MARKET_PURCHASE"
       );
     }
 
@@ -48,7 +132,7 @@ export class ShopService {
       const transaction = await tx.transaction.create({
         data: {
           characterId: input.characterId,
-          type: "SHOP_PURCHASE_COINS",
+          type: "MARKET_PURCHASE",
           value: -totalCost,
         },
       });
@@ -60,11 +144,142 @@ export class ShopService {
           coins: updatedInventory.coins,
         },
         purchased: {
+          market: true,
           productId: product.id,
           slug: product.slug,
           name: product.name,
           quantity: input.quantity,
           totalCost,
+        },
+      };
+    });
+  }
+
+  static async sellToMarket(userId: string, input: MarketSaleInput) {
+    const inventory = await InventoryService.getInventoryByCharacter(userId, input.characterId);
+
+    return prisma.$transaction(async (tx) => {
+      if (input.assetType === "ITEM") {
+        const item = inventory.items.find((entry) => entry.id === input.assetId);
+
+        if (!item) {
+          throw new AppError(404, "Item nao encontrado no inventario.", "ITEM_NOT_FOUND");
+        }
+
+        if (input.quantity > item.quantity) {
+          throw new AppError(409, "Quantidade maior que o saldo do item.", "INVALID_SELL_QUANTITY");
+        }
+
+        const unitPrice = resolveMarketSellPrice(item.value, "ITEM");
+        const totalValue = unitPrice * input.quantity;
+
+        if (input.quantity === item.quantity) {
+          await tx.item.delete({
+            where: { id: item.id },
+          });
+        } else {
+          await tx.item.update({
+            where: { id: item.id },
+            data: {
+              quantity: {
+                decrement: input.quantity,
+              },
+            },
+          });
+        }
+
+        const updatedInventory = await tx.inventory.update({
+          where: { id: inventory.id },
+          data: {
+            coins: {
+              increment: totalValue,
+            },
+          },
+        });
+
+        const transaction = await tx.transaction.create({
+          data: {
+            characterId: input.characterId,
+            type: "MARKET_SALE",
+            value: totalValue,
+          },
+        });
+
+        return {
+          transaction,
+          sold: {
+            assetType: "ITEM",
+            assetId: item.id,
+            name: item.name,
+            quantity: input.quantity,
+            unitPrice,
+            totalValue,
+          },
+          inventory: {
+            id: updatedInventory.id,
+            coins: updatedInventory.coins,
+          },
+        };
+      }
+
+      if (input.quantity !== 1) {
+        throw new AppError(
+          400,
+          "Equipamentos devem ser vendidos individualmente com quantity igual a 1.",
+          "INVALID_SELL_QUANTITY"
+        );
+      }
+
+      const equipment = inventory.equipments.find((entry) => entry.id === input.assetId);
+
+      if (!equipment) {
+        throw new AppError(404, "Equipamento nao encontrado no inventario.", "EQUIPMENT_NOT_FOUND");
+      }
+
+      if (equipment.isEquipped) {
+        throw new AppError(
+          409,
+          "Desequipe o equipamento antes de vender no mercado.",
+          "EQUIPMENT_EQUIPPED_FOR_SALE"
+        );
+      }
+
+      const unitPrice = resolveMarketSellPrice(equipment.value, "EQUIPMENT");
+
+      await tx.equipment.delete({
+        where: { id: equipment.id },
+      });
+
+      const updatedInventory = await tx.inventory.update({
+        where: { id: inventory.id },
+        data: {
+          coins: {
+            increment: unitPrice,
+          },
+        },
+      });
+
+      const transaction = await tx.transaction.create({
+        data: {
+          characterId: input.characterId,
+          type: "MARKET_SALE",
+          value: unitPrice,
+        },
+      });
+
+      return {
+        transaction,
+        sold: {
+          assetType: "EQUIPMENT",
+          assetId: equipment.id,
+          name: equipment.name,
+          quantity: 1,
+          unitPrice,
+          totalValue: unitPrice,
+        },
+        inventory: {
+          id: updatedInventory.id,
+          coins: updatedInventory.coins,
         },
       };
     });

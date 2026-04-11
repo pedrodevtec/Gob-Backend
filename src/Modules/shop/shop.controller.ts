@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/http";
-import { requireUserId } from "../../utils/validation";
+import { requireString, requireUserId } from "../../utils/validation";
 import { ShopService } from "./shop.service";
 
 export const getCatalog = asyncHandler(async (_req: Request, res: Response) => {
@@ -9,10 +9,29 @@ export const getCatalog = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(res, 200, { catalog });
 });
 
+export const getMarketOverview = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.characterId, "characterId");
+  const market = await ShopService.getMarketOverview(userId, characterId);
+  sendSuccess(res, 200, { market });
+});
+
 export const purchase = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const result = await ShopService.purchaseWithCoins(userId, req.body);
   sendSuccess(res, 201, result, "Compra realizada com sucesso.");
+});
+
+export const marketPurchase = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const result = await ShopService.purchaseWithCoins(userId, req.body);
+  sendSuccess(res, 201, result, "Compra de mercado realizada com sucesso.");
+});
+
+export const marketSell = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const result = await ShopService.sellToMarket(userId, req.body);
+  sendSuccess(res, 201, result, "Venda para o mercado realizada com sucesso.");
 });
 
 export const createPaymentOrder = asyncHandler(async (req: Request, res: Response) => {

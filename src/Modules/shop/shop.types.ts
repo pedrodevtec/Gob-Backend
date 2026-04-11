@@ -4,6 +4,13 @@ export interface PurchaseInput {
   quantity: number;
 }
 
+export interface MarketSaleInput {
+  characterId: string;
+  assetType: "ITEM" | "EQUIPMENT";
+  assetId: string;
+  quantity: number;
+}
+
 export interface CreatePaymentOrderInput {
   characterId: string;
   productId: string;

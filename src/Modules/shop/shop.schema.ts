@@ -1,7 +1,30 @@
 import { Request } from "express";
 import { AppError } from "../../errors/AppError";
 import { getBody, optionalString, requirePositiveInt, requireString } from "../../utils/validation";
-import { CreatePaymentOrderInput, PaymentWebhookInput, PurchaseInput } from "./shop.types";
+import {
+  CreatePaymentOrderInput,
+  MarketSaleInput,
+  PaymentWebhookInput,
+  PurchaseInput,
+} from "./shop.types";
+
+const requireEnumValue = <T extends string>(
+  value: unknown,
+  fieldName: string,
+  allowedValues: readonly T[]
+): T => {
+  const normalized = requireString(value, fieldName, 1, 50).toUpperCase() as T;
+
+  if (!allowedValues.includes(normalized)) {
+    throw new AppError(
+      400,
+      `Campo ${fieldName} deve ser um dos valores: ${allowedValues.join(", ")}.`,
+      "VALIDATION_ERROR"
+    );
+  }
+
+  return normalized;
+};
 
 export const validatePurchase = (req: Request): void => {
   const body = getBody(req);
@@ -9,6 +32,18 @@ export const validatePurchase = (req: Request): void => {
     characterId: requireString(body.characterId, "characterId", 1, 80),
     productId: requireString(body.productId, "productId", 1, 80),
     quantity: requirePositiveInt(body.quantity, "quantity", { min: 1, max: 99 }),
+  };
+
+  req.body = parsed;
+};
+
+export const validateMarketSale = (req: Request): void => {
+  const body = getBody(req);
+  const parsed: MarketSaleInput = {
+    characterId: requireString(body.characterId, "characterId", 1, 80),
+    assetType: requireEnumValue(body.assetType, "assetType", ["ITEM", "EQUIPMENT"]),
+    assetId: requireString(body.assetId, "assetId", 1, 80),
+    quantity: requirePositiveInt(body.quantity, "quantity", { min: 1, max: 999 }),
   };
 
   req.body = parsed;

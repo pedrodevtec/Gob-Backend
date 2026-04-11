@@ -105,6 +105,94 @@ export const openApiDocument = {
           lastRecoveredAt: { type: "string", format: "date-time", nullable: true },
         },
       },
+      CharacterRankingEntry: {
+        type: "object",
+        properties: {
+          position: { type: "integer" },
+          score: { type: "integer" },
+          metric: { type: "string", enum: ["LEVEL", "MISSIONS", "BOUNTIES"] },
+          character: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              level: { type: "integer" },
+              xp: { type: "integer" },
+              currentHealth: { type: "integer" },
+              status: { type: "string", enum: ["READY", "WOUNDED", "DEFEATED"] },
+              coins: { type: "integer" },
+              class: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  name: { type: "string" },
+                  modifier: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
+      PublicCharacterProfile: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          level: { type: "integer" },
+          xp: { type: "integer" },
+          currentHealth: { type: "integer" },
+          status: { type: "string", enum: ["READY", "WOUNDED", "DEFEATED"] },
+          lastCombatAt: { type: "string", format: "date-time", nullable: true },
+          lastRecoveredAt: { type: "string", format: "date-time", nullable: true },
+          class: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              modifier: { type: "string" },
+              description: { type: "string" },
+              passive: { type: "string", nullable: true },
+            },
+          },
+          stats: {
+            type: "object",
+            properties: {
+              attack: { type: "integer" },
+              defense: { type: "integer" },
+              maxHealth: { type: "integer" },
+              critChance: { type: "number" },
+            },
+          },
+          progression: {
+            type: "object",
+            properties: {
+              missionsCompleted: { type: "integer" },
+              bountiesCompleted: { type: "integer" },
+            },
+          },
+          equipment: {
+            type: "object",
+            properties: {
+              totalEquipped: { type: "integer" },
+              equipped: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string" },
+                    name: { type: "string" },
+                    category: { type: "string" },
+                    type: { type: "string" },
+                    img: { type: "string" },
+                    effect: { type: "string", nullable: true },
+                    equippedAt: { type: "string", format: "date-time", nullable: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       GameplayAvailability: {
         type: "object",
         properties: {
@@ -343,6 +431,16 @@ export const openApiDocument = {
         properties: {
           characterId: { type: "string" },
           productId: { type: "string" },
+          quantity: { type: "integer" },
+        },
+      },
+      MarketSaleRequest: {
+        type: "object",
+        required: ["characterId", "assetType", "assetId", "quantity"],
+        properties: {
+          characterId: { type: "string" },
+          assetType: { type: "string", enum: ["ITEM", "EQUIPMENT"] },
+          assetId: { type: "string" },
           quantity: { type: "integer" },
         },
       },
@@ -655,6 +753,39 @@ export const openApiDocument = {
         responses: { "201": { description: "Personagem criado" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" } },
       },
     },
+    "/api/v1/characters/rankings": {
+      get: {
+        tags: ["Characters"],
+        summary: "Leaderboard de level, missoes e bounties",
+        security: authSecurity,
+        parameters: [
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 50, default: 10 },
+          },
+        ],
+        responses: {
+          "200": { description: "Rankings retornados" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/v1/characters/{id}/public-profile": {
+      get: {
+        tags: ["Characters"],
+        summary: "Perfil publico do personagem para leaderboard",
+        security: authSecurity,
+        parameters: [idPathParam],
+        responses: {
+          "200": { description: "Perfil publico retornado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
     "/api/v1/characters/{id}": {
       get: { tags: ["Characters"], summary: "Buscar personagem por id", security: authSecurity, parameters: [idPathParam], responses: { "200": { description: "Personagem encontrado" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } },
       put: {
@@ -783,6 +914,48 @@ export const openApiDocument = {
     "/api/v1/rewards/characters/{characterId}": { get: { tags: ["Rewards"], summary: "Listar rewards", security: authSecurity, parameters: [characterIdPathParam], responses: { "200": { description: "Claims retornadas" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } } },
     "/api/v1/transactions/characters/{characterId}": { get: { tags: ["Transactions"], summary: "Historico de transacoes", security: authSecurity, parameters: [characterIdPathParam], responses: { "200": { description: "Historico retornado" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } } },
     "/api/v1/shop/catalog": { get: { tags: ["Shop"], summary: "Listar catalogo da loja", responses: { "200": { description: "Catalogo retornado" } } } },
+    "/api/v1/shop/market/characters/{characterId}": {
+      get: {
+        tags: ["Shop"],
+        summary: "Obter overview do mercado do personagem",
+        security: authSecurity,
+        parameters: [characterIdPathParam],
+        responses: {
+          "200": { description: "Overview do mercado retornado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/shop/market/purchases": {
+      post: {
+        tags: ["Shop"],
+        summary: "Comprar item ou equipamento no mercado com coins",
+        security: authSecurity,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PurchaseRequest" } } } },
+        responses: {
+          "201": { description: "Compra de mercado realizada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
+    "/api/v1/shop/market/sales": {
+      post: {
+        tags: ["Shop"],
+        summary: "Vender item ou equipamento para o mercado",
+        security: authSecurity,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/MarketSaleRequest" } } } },
+        responses: {
+          "201": { description: "Venda para o mercado realizada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
     "/api/v1/shop/purchases": { post: { tags: ["Shop"], summary: "Comprar com moeda interna", security: authSecurity, requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PurchaseRequest" } } } }, responses: { "201": { description: "Compra realizada" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "409": { $ref: "#/components/responses/Conflict" } } } },
     "/api/v1/shop/payment-orders": {
       get: { tags: ["Shop"], summary: "Listar pedidos de pagamento", security: authSecurity, responses: { "200": { description: "Pedidos retornados" }, "401": { $ref: "#/components/responses/Unauthorized" } } },

@@ -2,7 +2,22 @@ import { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/http";
 import { requireString, requireUserId } from "../../utils/validation";
+import { AppError } from "../../errors/AppError";
 import { CharacterService } from "./character.service";
+
+const parseRankingLimit = (value: unknown) => {
+  if (value === undefined) {
+    return 10;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 50) {
+    throw new AppError(400, "Query limit deve ser um inteiro entre 1 e 50.", "VALIDATION_ERROR");
+  }
+
+  return parsed;
+};
 
 export const listClasses = asyncHandler(async (_req: Request, res: Response) => {
   const classes = await CharacterService.listClasses();
@@ -19,6 +34,19 @@ export const getCharacters = asyncHandler(async (req: Request, res: Response) =>
   const userId = requireUserId(req);
   const characters = await CharacterService.getCharactersByUser(userId);
   sendSuccess(res, 200, { characters });
+});
+
+export const getCharacterRankings = asyncHandler(async (req: Request, res: Response) => {
+  requireUserId(req);
+  const rankings = await CharacterService.getRankings(parseRankingLimit(req.query.limit));
+  sendSuccess(res, 200, { rankings });
+});
+
+export const getPublicCharacterProfile = asyncHandler(async (req: Request, res: Response) => {
+  requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const profile = await CharacterService.getPublicCharacterProfile(characterId);
+  sendSuccess(res, 200, { profile });
 });
 
 export const getCharacterById = asyncHandler(async (req: Request, res: Response) => {

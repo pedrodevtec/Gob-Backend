@@ -115,6 +115,63 @@ Body:
 
 - `GET /api/v1/characters`
 
+### Rankings
+
+- `GET /api/v1/characters/rankings`
+
+Query opcional:
+
+```txt
+?limit=10
+```
+
+Retorna tres rankings em uma chamada:
+- `rankings.highestLevel`
+- `rankings.mostMissions`
+- `rankings.mostBounties`
+
+Regras:
+- `highestLevel` ordena por `level desc`, depois `xp desc`
+- `mostMissions` considera `CharacterActionLog` com `actionType = MISSION` e `outcome = WIN`
+- `mostBounties` considera `CharacterActionLog` com `actionType = BOUNTY_HUNT` e `outcome = WIN`
+- `limit` aceita de `1` a `50`
+
+Exemplo resumido:
+
+```json
+{
+  "rankings": {
+    "limit": 10,
+    "generatedAt": "2026-04-11T15:00:00.000Z",
+    "rankings": {
+      "highestLevel": [
+        {
+          "position": 1,
+          "score": 12,
+          "metric": "LEVEL",
+          "character": {
+            "id": "character-id",
+            "name": "Arthas",
+            "level": 12,
+            "xp": 1180,
+            "currentHealth": 220,
+            "status": "READY",
+            "coins": 540,
+            "class": {
+              "id": "class-id",
+              "name": "Warrior",
+              "modifier": "STR"
+            }
+          }
+        }
+      ],
+      "mostMissions": [],
+      "mostBounties": []
+    }
+  }
+}
+```
+
 ### Criar personagem
 
 - `POST /api/v1/characters`
@@ -133,6 +190,67 @@ Se `classId` nao for enviado, o backend tenta usar a primeira classe cadastrada.
 ### Buscar personagem
 
 - `GET /api/v1/characters/:id`
+
+### Perfil publico do personagem
+
+- `GET /api/v1/characters/:id/public-profile`
+
+Uso esperado:
+- abrir detalhes de um personagem vindo do leaderboard
+- nao exige ownership do personagem, apenas autenticacao
+
+Retorna:
+- progresso base do personagem
+- classe
+- `stats` derivados atuais
+- equipamentos equipados
+- contadores de `missionsCompleted` e `bountiesCompleted`
+
+Exemplo resumido:
+
+```json
+{
+  "profile": {
+    "id": "character-id",
+    "name": "Arthas",
+    "level": 12,
+    "xp": 1180,
+    "currentHealth": 220,
+    "status": "READY",
+    "class": {
+      "id": "class-id",
+      "name": "Warrior",
+      "modifier": "STR",
+      "description": "Especialista em combate corpo a corpo e alta resistencia.",
+      "passive": "Defesa reforcada em combates prolongados."
+    },
+    "stats": {
+      "attack": 58,
+      "defense": 37,
+      "maxHealth": 314,
+      "critChance": 0.08
+    },
+    "progression": {
+      "missionsCompleted": 14,
+      "bountiesCompleted": 8
+    },
+    "equipment": {
+      "totalEquipped": 3,
+      "equipped": [
+        {
+          "id": "equipment-id",
+          "name": "Lamina do Campeao",
+          "category": "weapon",
+          "type": "weapon",
+          "img": "/assets/items/tier-4-blade.png",
+          "effect": "+15 ATK",
+          "equippedAt": "2026-04-11T15:10:00.000Z"
+        }
+      ]
+    }
+  }
+}
+```
 
 ### Resumo do personagem
 
@@ -583,6 +701,125 @@ Exemplo de patch:
 
 Retorna produtos persistidos na tabela `ShopProduct`.
 
+### Overview do mercado
+
+- `GET /api/v1/shop/market/characters/:characterId`
+
+Retorna em uma chamada:
+- carteira atual em `market.wallet`
+- catalogo compravel em `market.buyCatalog`
+- itens vendaveis em `market.sellableItems`
+- equipamentos vendaveis em `market.sellableEquipments`
+
+Campos relevantes para o front no `buyCatalog`:
+- `buyPrice`
+- `suggestedSellPrice`
+- `canAfford`
+- `rewardQuantity`
+- `assetKind`
+
+Campos relevantes para o front em listagens vendaveis:
+- `unitSellPrice`
+- `totalSellPrice` para itens com stack
+- `isEquipped` para bloquear venda de equipamento equipado
+
+Exemplo resumido:
+
+```json
+{
+  "market": {
+    "characterId": "character-id",
+    "wallet": {
+      "inventoryId": "inventory-id",
+      "coins": 320
+    },
+    "buyCatalog": [
+      {
+        "id": "product-id",
+        "slug": "tier-2-blade",
+        "name": "Lamina do Guarda",
+        "category": "weapon",
+        "type": "weapon",
+        "assetKind": "EQUIPMENT",
+        "buyPrice": 160,
+        "currency": "COINS",
+        "rewardQuantity": 1,
+        "suggestedSellPrice": 112,
+        "canAfford": true
+      }
+    ],
+    "sellableItems": [
+      {
+        "id": "item-id",
+        "name": "Pocao Pequena de Vida",
+        "quantity": 3,
+        "unitSellPrice": 15,
+        "totalSellPrice": 45
+      }
+    ],
+    "sellableEquipments": [
+      {
+        "id": "equipment-id",
+        "name": "Lamina do Recruta",
+        "isEquipped": false,
+        "unitSellPrice": 56
+      }
+    ]
+  }
+}
+```
+
+### Comprar no mercado
+
+- `POST /api/v1/shop/market/purchases`
+
+Body:
+
+```json
+{
+  "characterId": "uuid-do-personagem",
+  "productId": "uuid-ou-slug-do-produto",
+  "quantity": 1
+}
+```
+
+Regras:
+- usa `coins` do inventario
+- aceita apenas produtos `ITEM` ou `EQUIPMENT`
+- retorna `purchased.market = true`
+
+### Vender para o mercado
+
+- `POST /api/v1/shop/market/sales`
+
+Body para item:
+
+```json
+{
+  "characterId": "uuid-do-personagem",
+  "assetType": "ITEM",
+  "assetId": "uuid-do-item",
+  "quantity": 2
+}
+```
+
+Body para equipamento:
+
+```json
+{
+  "characterId": "uuid-do-personagem",
+  "assetType": "EQUIPMENT",
+  "assetId": "uuid-do-equipamento",
+  "quantity": 1
+}
+```
+
+Regras:
+- item pode vender stack parcial
+- equipamento vende uma unidade por vez
+- equipamento equipado retorna `409 EQUIPMENT_EQUIPPED_FOR_SALE`
+- credita `coins` no inventario e registra transacao `MARKET_SALE`
+
 ### Compra com moeda do jogo
 
 - `POST /api/v1/shop/purchases`
@@ -601,6 +838,10 @@ Regras:
 - usa `coins` do inventario
 - bloqueia compra de produto do tipo `COINS`
 - entrega item/equipamento em transacao
+
+Observacao:
+- essa rota continua disponivel por compatibilidade
+- para o front novo, preferir o fluxo de mercado em `/api/v1/shop/market/*`
 
 ### Criar pedido de pagamento externo
 
@@ -706,8 +947,13 @@ O seed cria:
 - NPCs iniciais
 - produtos:
   - `small-health-potion`
-  - `bronze-sword`
   - `coin-pack-1000`
+  - linha de equipamentos com 5 tiers para loja:
+  - `tier-1-blade`, `tier-1-armor`, `tier-1-charm`
+  - `tier-2-blade`, `tier-2-armor`, `tier-2-charm`
+  - `tier-3-blade`, `tier-3-armor`, `tier-3-charm`
+  - `tier-4-blade`, `tier-4-armor`, `tier-4-charm`
+  - `tier-5-blade`, `tier-5-armor`, `tier-5-charm`
 
 Se definir `SEED_ADMIN_EMAIL` no ambiente e esse usuario ja existir, o seed promove esse usuario para `ADMIN`.
 
@@ -716,4 +962,29 @@ Se definir `SEED_ADMIN_EMAIL` no ambiente e esse usuario ja existir, o seed prom
 - Todas as rotas protegidas exigem `Authorization: Bearer <token>`
 - O backend usa validacao de payload e tratamento global de erro
 - O fluxo de pagamento ainda esta desacoplado do gateway; o endpoint de webhook aceita confirmacao manual/integrada
+- O endpoint de `market` em gameplay continua existindo como acao rapida de jornada e nao substitui o mercado de compra e venda da loja
 - Para producao, ajuste `CORS_ORIGIN` e `PAYMENT_WEBHOOK_SECRET`
+
+## Resumo para Front
+
+Rotas novas ou relevantes para a UI atual:
+- `GET /api/v1/shop/market/characters/:characterId`
+- `POST /api/v1/shop/market/purchases`
+- `POST /api/v1/shop/market/sales`
+- `GET /api/v1/characters/rankings`
+- `GET /api/v1/characters/:id/public-profile`
+
+Sugestao de fluxo:
+- tela de mercado: carregar `GET /api/v1/shop/market/characters/:characterId`
+- comprar item/equipamento: usar `POST /api/v1/shop/market/purchases`
+- vender item/equipamento: usar `POST /api/v1/shop/market/sales`
+- leaderboard: usar `GET /api/v1/characters/rankings`
+- detalhe de jogador do ranking: usar `GET /api/v1/characters/:id/public-profile`
+
+Regras de interface importantes:
+- `buyCatalog[].canAfford` pode dirigir estado de botao de compra
+- `sellableEquipments[].isEquipped` deve bloquear venda visualmente
+- item aceita venda parcial por `quantity`
+- equipamento vende com `quantity = 1`
+- ranking retorna tres blocos separados: `highestLevel`, `mostMissions`, `mostBounties`
+- perfil publico retorna `stats` derivados e apenas equipamentos equipados
