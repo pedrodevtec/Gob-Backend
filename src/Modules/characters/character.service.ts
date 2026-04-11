@@ -1,5 +1,6 @@
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
+import { deriveCharacterStats } from "../gameplay/combat.engine";
 import {
   CreateCharacterInput,
   UpdateCharacterPositionInput,
@@ -15,7 +16,11 @@ export class CharacterService {
   }
 
   static async createCharacter(userId: string, input: CreateCharacterInput) {
-    const classId = input.classId ?? (await this.getDefaultClassId());
+    const characterClass = await this.getClassForCreation(input.classId);
+    const startingStats = deriveCharacterStats({
+      level: 1,
+      classModifier: characterClass.modifier,
+    });
 
     return prisma.$transaction(async (tx) => {
       const inventory = await tx.inventory.create({
@@ -28,9 +33,11 @@ export class CharacterService {
         data: {
           userId,
           name: input.name,
-          classId,
+          classId: characterClass.id,
           inventoryId: inventory.id,
           level: 1,
+          currentHealth: startingStats.maxHealth,
+          status: "READY",
         },
         include: {
           class: true,
@@ -70,6 +77,10 @@ export class CharacterService {
           },
         },
         transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
+        actionLogs: {
           orderBy: { createdAt: "desc" },
           take: 10,
         },
@@ -133,6 +144,10 @@ export class CharacterService {
         where: { characterId },
       });
 
+      await tx.characterActionLog.deleteMany({
+        where: { characterId },
+      });
+
       if (character.inventoryId) {
         await tx.item.deleteMany({
           where: { inventoryId: character.inventoryId },
@@ -168,6 +183,8 @@ export class CharacterService {
       name: character.name,
       level: character.level,
       xp: character.xp,
+      currentHealth: character.currentHealth,
+      status: character.status,
       class: character.class,
       position: {
         posX: character.posX,
@@ -182,6 +199,7 @@ export class CharacterService {
         totalEquipments: character.inventory?.equipments.length ?? 0,
       },
       recentTransactions: character.transactions,
+      recentGameplayActions: character.actionLogs,
     };
   }
 
@@ -201,7 +219,19 @@ export class CharacterService {
     return character;
   }
 
-  private static async getDefaultClassId(): Promise<string> {
+  private static async getClassForCreation(classId?: string) {
+    if (classId) {
+      const existingClass = await prisma.class.findUnique({
+        where: { id: classId },
+      });
+
+      if (!existingClass) {
+        throw new AppError(404, "Classe informada nao encontrada.", "CLASS_NOT_FOUND");
+      }
+
+      return existingClass;
+    }
+
     const firstClass = await prisma.class.findFirst({
       orderBy: { name: "asc" },
     });
@@ -214,6 +244,6 @@ export class CharacterService {
       );
     }
 
-    return firstClass.id;
+    return firstClass;
   }
 }

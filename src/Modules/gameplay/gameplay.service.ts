@@ -1,7 +1,14 @@
-import { Prisma } from "@prisma/client";
+import { CharacterStatus, Prisma } from "@prisma/client";
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { CharacterService } from "../characters/character.service";
+import {
+  deriveCharacterState,
+  deriveCharacterStats,
+  getCooldownAvailability,
+  getRepeatWindowAvailability,
+  resolveCombat,
+} from "./combat.engine";
 import {
   BountyHuntInput,
   MarketActionInput,
@@ -9,13 +16,6 @@ import {
   NpcInteractionInput,
   TrainingInput,
 } from "./gameplay.types";
-
-interface DerivedStats {
-  attack: number;
-  defense: number;
-  maxHealth: number;
-  critChance: number;
-}
 
 interface CombatReward {
   xp: number;
@@ -46,6 +46,12 @@ type GameplayCharacterBase = Prisma.CharacterGetPayload<{
 type GameplayCharacter = Omit<GameplayCharacterBase, "inventory"> & {
   inventory: NonNullable<GameplayCharacterBase["inventory"]>;
 };
+
+type ActionType = "BOUNTY_HUNT" | "MISSION" | "TRAINING" | "NPC_INTERACTION" | "MARKET";
+
+const MARKET_ACTION_COOLDOWN_SECONDS = 300;
+const NPC_INTERACTION_COOLDOWN_SECONDS = 900;
+const MISSION_REPEAT_WINDOW_SECONDS = 1800;
 
 export class GameplayService {
   static async getJourneyOptions() {
@@ -143,6 +149,9 @@ export class GameplayService {
       throw new AppError(409, "Bounty expirada.", "BOUNTY_EXPIRED");
     }
 
+    await this.assertCombatReady(character);
+    await this.assertBountyNotAlreadyClaimed(characterId, bounty.id, bounty.timeLimit);
+
     const reward: CombatReward = {
       xp: bounty.rewardXp > 0 ? bounty.rewardXp : bounty.monster.experience,
       coins: bounty.reward,
@@ -159,12 +168,23 @@ export class GameplayService {
         : this.buildMonsterDrop(bounty.monster.name, bounty.monster.level),
     };
 
-    const combat = this.resolveCombat(character, bounty.monster);
+    const vitals = this.getCharacterVitals(character);
+    const combat = resolveCombat(
+      {
+        level: character.level,
+        currentHealth: vitals.currentHealth,
+        maxHealth: vitals.maxHealth,
+      },
+      vitals.stats,
+      bounty.monster
+    );
+
     return this.finishCombat(
       characterId,
       character,
       bounty.monster.name,
       "BOUNTY_HUNT",
+      bounty.id,
       combat,
       reward
     );
@@ -182,6 +202,15 @@ export class GameplayService {
     if (!mission) {
       throw new AppError(404, "Missao nao encontrada.", "MISSION_NOT_FOUND");
     }
+
+    await this.assertCombatReady(character);
+    const missionAvailability = await this.assertActionWindowAvailable(
+      characterId,
+      "MISSION",
+      mission.id,
+      MISSION_REPEAT_WINDOW_SECONDS,
+      "Missao indisponivel no momento. Aguarde para repetir."
+    );
 
     const monster = {
       name: mission.enemyName,
@@ -207,8 +236,27 @@ export class GameplayService {
         : undefined,
     };
 
-    const combat = this.resolveCombat(character, monster);
-    return this.finishCombat(characterId, character, mission.enemyName, "MISSION", combat, reward);
+    const vitals = this.getCharacterVitals(character);
+    const combat = resolveCombat(
+      {
+        level: character.level,
+        currentHealth: vitals.currentHealth,
+        maxHealth: vitals.maxHealth,
+      },
+      vitals.stats,
+      monster
+    );
+
+    return this.finishCombat(
+      characterId,
+      character,
+      mission.enemyName,
+      "MISSION",
+      mission.id,
+      combat,
+      reward,
+      missionAvailability.nextAvailableAt ?? undefined
+    );
   }
 
   static async executeTraining(userId: string, characterId: string, input: TrainingInput) {
@@ -224,6 +272,14 @@ export class GameplayService {
       throw new AppError(404, "Treinamento nao encontrado.", "TRAINING_NOT_FOUND");
     }
 
+    const availability = await this.assertActionWindowAvailable(
+      characterId,
+      "TRAINING",
+      training.id,
+      training.cooldownSeconds,
+      "Treinamento em cooldown."
+    );
+
     return prisma.$transaction(async (tx) => {
       const progression = await this.applyProgression(tx, characterId, character, training.xpReward);
       const updatedInventory = await tx.inventory.update({
@@ -234,6 +290,15 @@ export class GameplayService {
           },
         },
       });
+
+      await this.recordActionLog(
+        tx,
+        characterId,
+        "TRAINING",
+        training.id,
+        "COMPLETED",
+        availability.nextAvailableAt ?? undefined
+      );
 
       const transaction = await tx.transaction.create({
         data: {
@@ -257,6 +322,11 @@ export class GameplayService {
           id: updatedInventory.id,
           coins: updatedInventory.coins,
         },
+        characterState: this.buildCharacterStatePayload(character, undefined, progression.currentLevel),
+        availability: {
+          actionType: "TRAINING",
+          nextAvailableAt: availability.nextAvailableAt,
+        },
         transaction,
       };
     });
@@ -278,6 +348,14 @@ export class GameplayService {
     if (!npc) {
       throw new AppError(404, "NPC nao encontrado.", "NPC_NOT_FOUND");
     }
+
+    const availability = await this.assertActionWindowAvailable(
+      characterId,
+      "NPC_INTERACTION",
+      npc.id,
+      NPC_INTERACTION_COOLDOWN_SECONDS,
+      "NPC indisponivel no momento."
+    );
 
     return prisma.$transaction(async (tx) => {
       const xp = npc.xpReward;
@@ -323,6 +401,19 @@ export class GameplayService {
         await this.grantRewardItem(tx, character.inventory.id, item);
       }
 
+      const healedState = npc.interactionType.toLowerCase() === "healer"
+        ? await this.restoreCharacterHealth(tx, characterId, character, progression.currentLevel)
+        : this.buildCharacterStatePayload(character, undefined, progression.currentLevel);
+
+      await this.recordActionLog(
+        tx,
+        characterId,
+        "NPC_INTERACTION",
+        npc.id,
+        npc.interactionType.toUpperCase(),
+        availability.nextAvailableAt ?? undefined
+      );
+
       const transaction = await tx.transaction.create({
         data: {
           characterId,
@@ -347,6 +438,11 @@ export class GameplayService {
           id: character.inventory.id,
           coins: inventoryCoins,
         },
+        characterState: healedState,
+        availability: {
+          actionType: "NPC_INTERACTION",
+          nextAvailableAt: availability.nextAvailableAt,
+        },
         transaction,
       };
     });
@@ -354,6 +450,13 @@ export class GameplayService {
 
   static async executeMarketAction(userId: string, characterId: string, input: MarketActionInput) {
     const character = await this.getGameplayCharacter(userId, characterId);
+    const availability = await this.assertActionWindowAvailable(
+      characterId,
+      "MARKET",
+      input.action,
+      MARKET_ACTION_COOLDOWN_SECONDS,
+      "Acao de mercado em cooldown."
+    );
 
     return prisma.$transaction(async (tx) => {
       let coinsDelta = 0;
@@ -394,6 +497,15 @@ export class GameplayService {
         await this.grantRewardItem(tx, character.inventory.id, item);
       }
 
+      await this.recordActionLog(
+        tx,
+        characterId,
+        "MARKET",
+        input.action,
+        "COMPLETED",
+        availability.nextAvailableAt ?? undefined
+      );
+
       const transaction = await tx.transaction.create({
         data: {
           characterId,
@@ -414,6 +526,11 @@ export class GameplayService {
           id: character.inventory.id,
           coins: inventoryCoins,
         },
+        characterState: this.buildCharacterStatePayload(character),
+        availability: {
+          actionType: "MARKET",
+          nextAvailableAt: availability.nextAvailableAt,
+        },
         transaction,
       };
     });
@@ -424,8 +541,10 @@ export class GameplayService {
     character: GameplayCharacter,
     enemyName: string,
     actionType: "BOUNTY_HUNT" | "MISSION",
-    combat: ReturnType<typeof GameplayService.resolveCombat>,
-    reward: CombatReward
+    referenceId: string,
+    combat: ReturnType<typeof resolveCombat>,
+    reward: CombatReward,
+    nextAvailableAt?: Date
   ) {
     return prisma.$transaction(async (tx) => {
       const progression = combat.victory
@@ -457,6 +576,23 @@ export class GameplayService {
         await this.grantRewardItem(tx, character.inventory.id, reward.item);
       }
 
+      const characterState = await this.persistCombatState(
+        tx,
+        characterId,
+        combat.characterHealthRemaining,
+        progression.currentLevel,
+        combat.victory
+      );
+
+      await this.recordActionLog(
+        tx,
+        characterId,
+        actionType,
+        referenceId,
+        combat.victory ? "WIN" : "LOSS",
+        nextAvailableAt
+      );
+
       const transaction = await tx.transaction.create({
         data: {
           characterId,
@@ -485,126 +621,230 @@ export class GameplayService {
           id: character.inventory.id,
           coins: inventoryCoins,
         },
+        characterState,
+        availability: {
+          actionType,
+          nextAvailableAt: nextAvailableAt ?? null,
+        },
         transaction,
       };
     });
   }
 
-  private static resolveCombat(
-    character: GameplayCharacter,
-    monster: {
-      name: string;
-      level: number;
-      health: number;
-      attack: number;
-      defense: number;
-    }
-  ) {
-    const stats = this.deriveCharacterStats(character);
-    let characterHealth = stats.maxHealth;
-    let monsterHealth = monster.health;
-    const rounds = [];
-    const maxRounds = 6 + Math.max(0, character.level - monster.level) + 2;
-
-    for (let index = 0; index < maxRounds; index += 1) {
-      const critRoll = Math.random();
-      const critBonus = critRoll <= stats.critChance ? 1.5 : 1;
-      const characterDamage = Math.max(
-        1,
-        Math.round((stats.attack - monster.defense + 6 + Math.random() * 4) * critBonus)
-      );
-      monsterHealth = Math.max(0, monsterHealth - characterDamage);
-
-      rounds.push({
-        round: index + 1,
-        actor: "character",
-        damage: characterDamage,
-        remainingEnemyHealth: monsterHealth,
-      });
-
-      if (monsterHealth <= 0) {
-        break;
-      }
-
-      const monsterDamage = Math.max(
-        1,
-        Math.round(monster.attack - stats.defense + 4 + Math.random() * 4)
-      );
-      characterHealth = Math.max(0, characterHealth - monsterDamage);
-
-      rounds.push({
-        round: index + 1,
-        actor: "monster",
-        damage: monsterDamage,
-        remainingCharacterHealth: characterHealth,
-      });
-
-      if (characterHealth <= 0) {
-        break;
-      }
-    }
-
-    const victory = monsterHealth <= 0 && characterHealth > 0;
+  private static getCharacterVitals(character: GameplayCharacter) {
+    const stats = deriveCharacterStats({
+      level: character.level,
+      classModifier: character.class.modifier,
+      equipmentEffects: character.inventory.equipments
+        .filter((entry) => entry.isEquipped)
+        .map((entry) => entry.effect),
+    });
+    const state = deriveCharacterState({
+      currentHealth: character.currentHealth,
+      maxHealth: stats.maxHealth,
+    });
 
     return {
-      victory,
-      characterHealthRemaining: characterHealth,
-      enemyHealthRemaining: monsterHealth,
       stats,
-      rounds,
+      currentHealth: state.currentHealth,
+      maxHealth: stats.maxHealth,
+      status: state.status,
     };
   }
 
-  private static deriveCharacterStats(
-    character: GameplayCharacter
-  ): DerivedStats {
-    const baseStats: DerivedStats = {
-      attack: 10 + character.level * 3,
-      defense: 6 + character.level * 2,
-      maxHealth: 70 + character.level * 18,
-      critChance: 0.08,
+  private static buildCharacterStatePayload(
+    character: GameplayCharacter,
+    currentHealth?: number,
+    levelOverride?: number
+  ) {
+    const stats = deriveCharacterStats({
+      level: levelOverride ?? character.level,
+      classModifier: character.class.modifier,
+      equipmentEffects: character.inventory.equipments
+        .filter((entry) => entry.isEquipped)
+        .map((entry) => entry.effect),
+    });
+    const state = deriveCharacterState({
+      currentHealth: currentHealth ?? character.currentHealth,
+      maxHealth: stats.maxHealth,
+    });
+
+    return {
+      currentHealth: state.currentHealth,
+      maxHealth: stats.maxHealth,
+      status: state.status,
+      lastCombatAt: character.lastCombatAt,
+      lastRecoveredAt: character.lastRecoveredAt,
     };
-
-    const modifier = character.class.modifier.toUpperCase();
-
-    if (modifier === "STR") {
-      baseStats.attack += 6;
-      baseStats.defense += 4;
-      baseStats.maxHealth += 18;
-    } else if (modifier === "INT") {
-      baseStats.attack += 8;
-      baseStats.defense += 2;
-      baseStats.maxHealth += 10;
-    } else if (modifier === "DEX") {
-      baseStats.attack += 5;
-      baseStats.defense += 3;
-      baseStats.maxHealth += 12;
-      baseStats.critChance += 0.1;
-    }
-
-    for (const equipment of character.inventory.equipments.filter((entry) => entry.isEquipped)) {
-      const effect = equipment.effect ?? "";
-      const amount = this.extractEffectValue(effect);
-
-      if (effect.toUpperCase().includes("ATK")) {
-        baseStats.attack += amount;
-      }
-
-      if (effect.toUpperCase().includes("DEF")) {
-        baseStats.defense += amount;
-      }
-
-      if (effect.toUpperCase().includes("HP")) {
-        baseStats.maxHealth += amount;
-      }
-    }
-
-    return baseStats;
   }
 
-  private static extractEffectValue(effect: string) {
-    const matched = effect.match(/(\d+)/);
-    return matched ? Number(matched[1]) : 0;
+  private static async persistCombatState(
+    tx: Prisma.TransactionClient,
+    characterId: string,
+    currentHealth: number,
+    level: number,
+    victory: boolean
+  ) {
+    const character = await tx.character.findUnique({
+      where: { id: characterId },
+      include: {
+        class: true,
+        inventory: {
+          include: {
+            equipments: true,
+            items: true,
+          },
+        },
+      },
+    });
+
+    if (!character || !character.inventory) {
+      throw new AppError(404, "Personagem de combate nao encontrado.", "GAMEPLAY_CHARACTER_NOT_FOUND");
+    }
+
+    const payload = this.buildCharacterStatePayload(
+      character as GameplayCharacter,
+      currentHealth,
+      level
+    );
+
+    const now = new Date();
+    await tx.character.update({
+      where: { id: characterId },
+      data: {
+        currentHealth: payload.currentHealth,
+        status: payload.status as CharacterStatus,
+        lastCombatAt: now,
+        ...(victory && payload.status === "READY" ? { lastRecoveredAt: now } : {}),
+      },
+    });
+
+    return {
+      ...payload,
+      lastCombatAt: now,
+      lastRecoveredAt: victory && payload.status === "READY" ? now : character.lastRecoveredAt,
+    };
+  }
+
+  private static async restoreCharacterHealth(
+    tx: Prisma.TransactionClient,
+    characterId: string,
+    character: GameplayCharacter,
+    levelOverride?: number
+  ) {
+    const stats = deriveCharacterStats({
+      level: levelOverride ?? character.level,
+      classModifier: character.class.modifier,
+      equipmentEffects: character.inventory.equipments
+        .filter((entry) => entry.isEquipped)
+        .map((entry) => entry.effect),
+    });
+    const now = new Date();
+
+    await tx.character.update({
+      where: { id: characterId },
+      data: {
+        currentHealth: stats.maxHealth,
+        status: CharacterStatus.READY,
+        lastRecoveredAt: now,
+      },
+    });
+
+    return {
+      currentHealth: stats.maxHealth,
+      maxHealth: stats.maxHealth,
+      status: "READY",
+      lastCombatAt: character.lastCombatAt,
+      lastRecoveredAt: now,
+    };
+  }
+
+  private static async assertCombatReady(character: GameplayCharacter) {
+    const vitals = this.getCharacterVitals(character);
+
+    if (vitals.currentHealth <= 0 || vitals.status === "DEFEATED") {
+      throw new AppError(
+        409,
+        "Personagem derrotado. Procure um NPC curandeiro antes de voltar ao combate.",
+        "CHARACTER_DEFEATED"
+      );
+    }
+  }
+
+  private static async assertBountyNotAlreadyClaimed(
+    characterId: string,
+    bountyId: string,
+    activeUntil: Date
+  ) {
+    const completed = await prisma.characterActionLog.findFirst({
+      where: {
+        characterId,
+        actionType: "BOUNTY_HUNT",
+        referenceId: bountyId,
+        outcome: "WIN",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (completed && completed.createdAt <= activeUntil) {
+      throw new AppError(
+        409,
+        "Esta bounty ja foi concluida por este personagem enquanto ainda estava ativa.",
+        "BOUNTY_ALREADY_COMPLETED",
+        { nextAvailableAt: activeUntil }
+      );
+    }
+  }
+
+  private static async assertActionWindowAvailable(
+    characterId: string,
+    actionType: ActionType,
+    referenceId: string,
+    windowSeconds: number,
+    message: string
+  ) {
+    const latest = await prisma.characterActionLog.findFirst({
+      where: {
+        characterId,
+        actionType,
+        referenceId,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const availability = actionType === "MISSION"
+      ? getRepeatWindowAvailability(latest?.createdAt, windowSeconds)
+      : getCooldownAvailability(latest?.createdAt, windowSeconds);
+
+    if (!availability.available) {
+      throw new AppError(409, message, "ACTION_ON_COOLDOWN", {
+        nextAvailableAt: availability.nextAvailableAt,
+      });
+    }
+
+    return {
+      nextAvailableAt:
+        windowSeconds > 0 ? new Date(Date.now() + windowSeconds * 1000) : availability.nextAvailableAt,
+    };
+  }
+
+  private static async recordActionLog(
+    tx: Prisma.TransactionClient,
+    characterId: string,
+    actionType: ActionType,
+    referenceId: string,
+    outcome: string,
+    availableAt?: Date
+  ) {
+    await tx.characterActionLog.create({
+      data: {
+        characterId,
+        actionType,
+        referenceId,
+        outcome,
+        availableAt,
+      },
+    });
   }
 
   private static buildMonsterDrop(monsterName: string, monsterLevel: number): CombatReward["item"] {
@@ -641,6 +881,23 @@ export class GameplayService {
         "Personagem ou inventario nao encontrado para gameplay.",
         "GAMEPLAY_CHARACTER_NOT_FOUND"
       );
+    }
+
+    const vitals = this.getCharacterVitals(character as GameplayCharacter);
+
+    if (
+      character.currentHealth !== vitals.currentHealth ||
+      character.status !== (vitals.status as CharacterStatus)
+    ) {
+      await prisma.character.update({
+        where: { id: characterId },
+        data: {
+          currentHealth: vitals.currentHealth,
+          status: vitals.status as CharacterStatus,
+        },
+      });
+      character.currentHealth = vitals.currentHealth;
+      character.status = vitals.status as CharacterStatus;
     }
 
     return character as GameplayCharacter;

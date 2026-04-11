@@ -138,6 +138,15 @@ Se `classId` nao for enviado, o backend tenta usar a primeira classe cadastrada.
 
 - `GET /api/v1/characters/:id/summary`
 
+Campos importantes para o front:
+- `level`
+- `xp`
+- `currentHealth`
+- `status` com valores `READY`, `WOUNDED` ou `DEFEATED`
+- `inventory.coins`
+- `recentTransactions`
+- `recentGameplayActions`
+
 ### Atualizar nome do personagem
 
 - `PUT /api/v1/characters/:id`
@@ -225,6 +234,16 @@ Comportamento:
 
 ## Gameplay
 
+Regras atuais do gameplay para o front:
+- combate usa o `currentHealth` persistido do personagem como vida inicial
+- ao fim de combate, o backend atualiza `characterState.currentHealth` e `characterState.status`
+- se o personagem chegar a `0 HP`, ele fica `DEFEATED` e nao pode iniciar novo combate
+- NPC com `interactionType = healer` restaura HP maximo e volta o status para `READY`
+- treino respeita `cooldownSeconds` por personagem
+- missao possui janela de repeticao por personagem e retorna `availability.nextAvailableAt`
+- bounty so pode ser concluida uma vez por personagem enquanto a mesma bounty estiver ativa
+- market e NPC possuem cooldown por personagem e retornam `availability.nextAvailableAt`
+
 ### Jornada e catalogos
 
 - `GET /api/v1/gameplay/journey`
@@ -246,6 +265,19 @@ Body:
 }
 ```
 
+Retorno relevante para UI:
+- `result.combat.victory`
+- `result.combat.rounds`
+- `result.rewards`
+- `result.progression`
+- `result.inventory`
+- `result.characterState`
+
+Erros esperados:
+- `409 CHARACTER_DEFEATED`
+- `409 BOUNTY_ALREADY_COMPLETED`
+- `409 BOUNTY_EXPIRED`
+
 ### Executar missao
 
 - `POST /api/v1/gameplay/characters/:characterId/actions/missions`
@@ -257,6 +289,16 @@ Body:
   "missionId": "uuid-da-missao"
 }
 ```
+
+Retorno relevante para UI:
+- `result.combat`
+- `result.rewards`
+- `result.progression`
+- `result.characterState`
+- `result.availability.nextAvailableAt`
+
+Erro esperado:
+- `409 ACTION_ON_COOLDOWN`
 
 ### Executar treinamento
 
@@ -270,6 +312,15 @@ Body:
 }
 ```
 
+Retorno relevante para UI:
+- `result.rewards`
+- `result.progression`
+- `result.characterState`
+- `result.availability.nextAvailableAt`
+
+Erro esperado:
+- `409 ACTION_ON_COOLDOWN`
+
 ### Executar interacao com NPC
 
 - `POST /api/v1/gameplay/characters/:characterId/actions/npc-interaction`
@@ -281,6 +332,15 @@ Body:
   "npcId": "uuid-do-npc"
 }
 ```
+
+Retorno relevante para UI:
+- `result.note`
+- `result.rewards`
+- `result.characterState`
+- `result.availability.nextAvailableAt`
+
+Observacao:
+- se `interactionType` for `healer`, o backend devolve HP cheio em `characterState`
 
 ### Executar acao de mercado
 
@@ -299,6 +359,78 @@ Ou:
 ```json
 {
   "action": "scavenge"
+}
+```
+
+Retorno relevante para UI:
+- `result.rewards`
+- `result.inventory`
+- `result.characterState`
+- `result.availability.nextAvailableAt`
+
+Erro esperado:
+- `409 ACTION_ON_COOLDOWN`
+
+### Formato de retorno de gameplay
+
+As acoes de gameplay retornam em `result` um formato proximo de:
+
+```json
+{
+  "action": "BOUNTY_HUNT",
+  "enemy": "Slime",
+  "combat": {
+    "victory": true,
+    "characterHealthRemaining": 84,
+    "enemyHealthRemaining": 0,
+    "stats": {
+      "attack": 19,
+      "defense": 12,
+      "maxHealth": 106,
+      "critChance": 0.08
+    },
+    "rounds": [
+      {
+        "round": 1,
+        "actor": "character",
+        "damage": 18,
+        "remainingEnemyHealth": 17
+      },
+      {
+        "round": 1,
+        "actor": "monster",
+        "damage": 7,
+        "remainingCharacterHealth": 99
+      }
+    ]
+  },
+  "rewards": {
+    "xp": 20,
+    "coins": 25,
+    "item": null
+  },
+  "progression": {
+    "previousXp": 0,
+    "currentXp": 20,
+    "previousLevel": 1,
+    "currentLevel": 1,
+    "levelUps": 0
+  },
+  "inventory": {
+    "id": "inventory-id",
+    "coins": 25
+  },
+  "characterState": {
+    "currentHealth": 84,
+    "maxHealth": 106,
+    "status": "WOUNDED",
+    "lastCombatAt": "2026-04-11T12:00:00.000Z",
+    "lastRecoveredAt": null
+  },
+  "availability": {
+    "actionType": "BOUNTY_HUNT",
+    "nextAvailableAt": null
+  }
 }
 ```
 

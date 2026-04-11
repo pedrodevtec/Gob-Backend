@@ -34,6 +34,12 @@ enum GameplayDifficulty {
   ELITE
 }
 
+enum CharacterStatus {
+  READY
+  WOUNDED
+  DEFEATED
+}
+
 model User {
   id            String         @id @default(uuid())
   nome          String
@@ -50,7 +56,11 @@ model Character {
   name           String
   level          Int            @default(1)
   xp             Int            @default(0)
+  currentHealth  Int            @default(100)
+  status         CharacterStatus @default(READY)
   lastCheckpoint String?
+  lastCombatAt   DateTime?
+  lastRecoveredAt DateTime?
   posX           Float?
   posY           Float?
   posZ           Float?
@@ -62,6 +72,7 @@ model Character {
   inventory     Inventory?     @relation(fields: [inventoryId], references: [id])
   class         Class          @relation("ClassToCharacter", fields: [classId], references: [id])
   transactions  Transaction[]
+  actionLogs    CharacterActionLog[]
   paymentOrders PaymentOrder[]
   rewardClaims  RewardClaim[]
 }
@@ -221,6 +232,22 @@ model Transaction {
   createdAt   DateTime  @default(now())
 
   character Character @relation(fields: [characterId], references: [id])
+}
+
+model CharacterActionLog {
+  id          String   @id @default(uuid())
+  characterId String
+  actionType  String
+  referenceId String?
+  outcome     String
+  availableAt DateTime?
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  character Character @relation(fields: [characterId], references: [id])
+
+  @@index([characterId, actionType, createdAt])
+  @@index([characterId, actionType, referenceId, createdAt])
 }
 
 model ShopProduct {
