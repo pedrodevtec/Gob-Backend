@@ -95,6 +95,7 @@ export class ShopService {
         type: equipment.type,
         img: equipment.img,
         effect: equipment.effect,
+        levelRequirement: equipment.levelRequirement,
         isEquipped: equipment.isEquipped,
         unitSellPrice: resolveMarketSellPrice(equipment.value, "EQUIPMENT"),
       })),
@@ -518,6 +519,7 @@ export class ShopService {
           type: product.type,
           img: product.img,
           effect: product.effect,
+          levelRequirement: product.levelRequirement,
         },
       });
     }

@@ -21,6 +21,7 @@ interface GrantEquipmentInput {
   type: string;
   img: string;
   effect?: string | null;
+  levelRequirement?: number | null;
   quantity?: number;
 }
 
@@ -113,7 +114,7 @@ export class InventoryService {
       throw new AppError(404, "Item nao encontrado no inventario.", "ITEM_NOT_FOUND");
     }
 
-    this.ensureCharacterMeetsItemRequirement(character.level, item.levelRequirement);
+    this.ensureCharacterMeetsLevelRequirement(character.level, item.levelRequirement);
 
     const appliedEffects = this.resolveItemEffects(item.type, item.value);
 
@@ -179,10 +180,13 @@ export class InventoryService {
   static async equipEquipment(userId: string, characterId: string, equipmentId: string) {
     const inventory = await this.getInventoryByCharacter(userId, characterId);
     const equipment = inventory.equipments.find((entry) => entry.id === equipmentId);
+    const character = await CharacterService.ensureOwnership(userId, characterId);
 
     if (!equipment) {
       throw new AppError(404, "Equipamento nao encontrado no inventario.", "EQUIPMENT_NOT_FOUND");
     }
+
+    this.ensureCharacterMeetsLevelRequirement(character.level, equipment.levelRequirement);
 
     return prisma.$transaction(async (tx) => {
       await tx.equipment.updateMany({
@@ -267,7 +271,7 @@ export class InventoryService {
     return { xp: 0, coins: 0 };
   }
 
-  private static ensureCharacterMeetsItemRequirement(
+  private static ensureCharacterMeetsLevelRequirement(
     characterLevel: number,
     levelRequirement?: number | null
   ) {
@@ -277,8 +281,8 @@ export class InventoryService {
 
     throw new AppError(
       409,
-      `Nivel insuficiente para usar este item. Requer level ${levelRequirement} e o personagem esta no level ${characterLevel}.`,
-      "ITEM_LEVEL_REQUIREMENT_NOT_MET"
+      `Nivel insuficiente. Requer level ${levelRequirement} e o personagem esta no level ${characterLevel}.`,
+      "LEVEL_REQUIREMENT_NOT_MET"
     );
   }
 
@@ -351,6 +355,7 @@ export class InventoryService {
           type: equipment.type,
           img: equipment.img,
           effect: equipment.effect ?? null,
+          levelRequirement: equipment.levelRequirement ?? null,
         },
       });
 

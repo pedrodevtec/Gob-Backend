@@ -377,6 +377,7 @@ export class CharacterService {
             type: entry.type,
             img: entry.img,
             effect: entry.effect,
+            levelRequirement: entry.levelRequirement,
             equippedAt: entry.equippedAt,
           })),
       },

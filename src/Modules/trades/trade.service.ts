@@ -419,6 +419,7 @@ export class TradeService {
           type: equipment.type,
           img: equipment.img,
           effect: equipment.effect,
+          levelRequirement: equipment.levelRequirement,
           isEquipped: false,
           equippedAt: null,
         },

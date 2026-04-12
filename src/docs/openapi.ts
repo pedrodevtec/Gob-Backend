@@ -211,6 +211,7 @@ export const openApiDocument = {
                     type: { type: "string" },
                     img: { type: "string" },
                     effect: { type: "string", nullable: true },
+                    levelRequirement: { type: "integer", nullable: true },
                     equippedAt: { type: "string", format: "date-time", nullable: true },
                   },
                 },

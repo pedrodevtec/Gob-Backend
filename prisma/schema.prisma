@@ -143,6 +143,7 @@ model Equipment {
   type        String
   img         String
   effect      String?
+  levelRequirement Int?
   isEquipped  Boolean   @default(false)
   equippedAt  DateTime?
   inventoryId String
