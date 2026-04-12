@@ -21,13 +21,13 @@ run("deriveCharacterStats aplica modificadores de classe e equipamentos", () => 
   const stats = deriveCharacterStats({
     level: 3,
     classModifier: "DEX",
-    equipmentEffects: ["+5 ATK", "+7 HP", "+2 DEF"],
+    equipmentEffects: ["+5 ATK", "+7 HP", "+2 DEF", "+3 CRIT"],
   });
 
   assert.equal(stats.attack, 29);
   assert.equal(stats.defense, 17);
   assert.equal(stats.maxHealth, 143);
-  assert.equal(stats.critChance, 0.18);
+  assert.equal(stats.critChance, 0.21);
 });
 
 run("deriveCharacterStats aplica passiva de classe por nome", () => {
@@ -67,6 +67,19 @@ run("deriveCharacterStats aplica buff percentual aos atributos base", () => {
   assert.equal(stats.attack, 31);
   assert.equal(stats.defense, 17);
   assert.equal(stats.maxHealth, 148);
+});
+
+run("deriveCharacterStats suporta buff e debuff no mesmo efeito", () => {
+  const stats = deriveCharacterStats({
+    level: 8,
+    classModifier: "STR",
+    equipmentEffects: ["+8 CRIT -40 HP", "+18 DEF -9 ATK"],
+  });
+
+  assert.equal(stats.attack, 31);
+  assert.equal(stats.defense, 44);
+  assert.equal(stats.maxHealth, 192);
+  assert.equal(stats.critChance, 0.16);
 });
 
 run("deriveCharacterState marca personagem derrotado quando hp chega a zero", () => {

@@ -2,7 +2,18 @@ import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { deriveCharacterStats } from "../gameplay/combat.engine";
 import {
+  AWAKEN_ITEM_TYPE,
+  AWAKEN_LEVEL_REQUIREMENT,
+  getAwakeningTargetsByClassName,
+  getLevelFromXp,
+  getXpProgression,
+  isAwakenedClass,
+  isBaseClass,
+} from "./character.progression";
+import {
+  AwakenCharacterInput,
   CreateCharacterInput,
+  UpdateCharacterCustomizationInput,
   UpdateCharacterPositionInput,
   UpdateCharacterProfileInput,
   UpdateCharacterProgressInput,
@@ -169,9 +180,16 @@ export class CharacterService {
   }
 
   static async listClasses() {
-    return prisma.class.findMany({
+    const classes = await prisma.class.findMany({
       orderBy: { name: "asc" },
     });
+
+    return classes.map((entry) => ({
+      ...entry,
+      isBaseClass: isBaseClass(entry.name),
+      isAwakenedClass: isAwakenedClass(entry.name),
+      awakensTo: getAwakeningTargetsByClassName(entry.name),
+    }));
   }
 
   static async createCharacter(userId: string, input: CreateCharacterInput) {
@@ -299,6 +317,8 @@ export class CharacterService {
       }),
     ]);
 
+    const xpProgression = getXpProgression(character.xp);
+
     return {
       id: character.id,
       name: character.name,
@@ -315,10 +335,24 @@ export class CharacterService {
         description: character.class.description,
         passive: character.class.passive,
       },
+      customization: {
+        avatarId: character.avatarId,
+        titleId: character.titleId,
+        bannerId: character.bannerId,
+      },
       stats,
       progression: {
         missionsCompleted,
         bountiesCompleted,
+        xp: {
+          current: character.xp,
+          currentLevel: xpProgression.currentLevel,
+          currentLevelFloorXp: xpProgression.currentLevelFloorXp,
+          nextLevelFloorXp: xpProgression.nextLevelFloorXp,
+          xpIntoLevel: xpProgression.xpIntoLevel,
+          xpForNextLevel: xpProgression.xpForNextLevel,
+          xpRemainingToNextLevel: xpProgression.xpRemainingToNextLevel,
+        },
       },
       equipment: {
         totalEquipped: character.inventory?.equipments.filter((entry) => entry.isEquipped).length ?? 0,
@@ -379,6 +413,138 @@ export class CharacterService {
     });
   }
 
+  static async updateCharacterCustomization(
+    userId: string,
+    characterId: string,
+    data: UpdateCharacterCustomizationInput
+  ) {
+    await this.ensureOwnership(userId, characterId);
+
+    return prisma.character.update({
+      where: { id: characterId },
+      data,
+      include: {
+        class: true,
+      },
+    });
+  }
+
+  static async awakenCharacter(userId: string, characterId: string, input: AwakenCharacterInput) {
+    const character = await prisma.character.findFirst({
+      where: { id: characterId, userId },
+      include: {
+        class: true,
+        inventory: {
+          include: {
+            items: true,
+          },
+        },
+      },
+    });
+
+    if (!character || !character.inventory) {
+      throw new AppError(404, "Personagem nao encontrado.", "CHARACTER_NOT_FOUND");
+    }
+
+    const effectiveLevel = Math.max(character.level, getLevelFromXp(character.xp));
+
+    if (effectiveLevel < AWAKEN_LEVEL_REQUIREMENT) {
+      throw new AppError(
+        409,
+        `Awaken exige nivel minimo ${AWAKEN_LEVEL_REQUIREMENT}.`,
+        "AWAKEN_LEVEL_REQUIRED"
+      );
+    }
+
+    const allowedTargets = getAwakeningTargetsByClassName(character.class.name);
+
+    if (!allowedTargets.length) {
+      throw new AppError(409, "Esta classe nao possui awaken disponivel.", "AWAKEN_NOT_AVAILABLE");
+    }
+
+    const targetClass = await prisma.class.findUnique({
+      where: { id: input.targetClassId },
+    });
+
+    if (!targetClass || !allowedTargets.includes(targetClass.name)) {
+      throw new AppError(409, "Classe de awaken invalida para este personagem.", "INVALID_AWAKEN_TARGET");
+    }
+
+    const awakenItem = character.inventory.items.find(
+      (entry) => entry.type === AWAKEN_ITEM_TYPE && entry.quantity > 0
+    );
+
+    if (!awakenItem) {
+      throw new AppError(
+        409,
+        "Item de awaken nao encontrado no inventario.",
+        "AWAKEN_ITEM_REQUIRED"
+      );
+    }
+
+    return prisma.$transaction(async (tx) => {
+      if (awakenItem.quantity <= 1) {
+        await tx.item.delete({
+          where: { id: awakenItem.id },
+        });
+      } else {
+        await tx.item.update({
+          where: { id: awakenItem.id },
+          data: {
+            quantity: {
+              decrement: 1,
+            },
+          },
+        });
+      }
+
+      const updatedCharacter = await tx.character.update({
+        where: { id: characterId },
+        data: {
+          classId: targetClass.id,
+        },
+        include: {
+          class: true,
+          inventory: {
+            include: {
+              items: true,
+              equipments: true,
+            },
+          },
+        },
+      });
+
+      await tx.transaction.create({
+        data: {
+          characterId,
+          type: "CLASS_AWAKENED",
+          value: 0,
+        },
+      });
+
+      const stats = deriveCharacterStats({
+        level: updatedCharacter.level,
+        className: updatedCharacter.class.name,
+        classModifier: updatedCharacter.class.modifier,
+        equipmentEffects: updatedCharacter.inventory?.equipments
+          .filter((entry) => entry.isEquipped)
+          .map((entry) => entry.effect) ?? [],
+      });
+
+      return {
+        character: updatedCharacter,
+        awakenedFrom: character.class.name,
+        awakenedTo: updatedCharacter.class.name,
+        consumedItem: {
+          id: awakenItem.id,
+          name: awakenItem.name,
+          type: awakenItem.type,
+        },
+        stats,
+      };
+    });
+  }
+
   static async deleteCharacter(userId: string, characterId: string) {
     const character = await this.ensureOwnership(userId, characterId);
 
@@ -420,6 +586,19 @@ export class CharacterService {
 
   static async getCharacterSummary(userId: string, characterId: string) {
     const character = await this.getCharacterById(userId, characterId);
+    const xpProgression = getXpProgression(character.xp);
+    const awakeningTargets = getAwakeningTargetsByClassName(character.class.name);
+    const awakenItem = character.inventory?.items.find((entry) => entry.type === AWAKEN_ITEM_TYPE);
+    const targetClasses = awakeningTargets.length
+      ? await prisma.class.findMany({
+          where: {
+            name: {
+              in: awakeningTargets,
+            },
+          },
+          orderBy: { name: "asc" },
+        })
+      : [];
 
     return {
       id: character.id,
@@ -429,6 +608,11 @@ export class CharacterService {
       currentHealth: character.currentHealth,
       status: character.status,
       class: character.class,
+      customization: {
+        avatarId: character.avatarId,
+        titleId: character.titleId,
+        bannerId: character.bannerId,
+      },
       position: {
         posX: character.posX,
         posY: character.posY,
@@ -440,6 +624,32 @@ export class CharacterService {
         coins: character.inventory?.coins ?? 0,
         totalItems: character.inventory?.items.length ?? 0,
         totalEquipments: character.inventory?.equipments.length ?? 0,
+      },
+      progression: {
+        currentXp: character.xp,
+        currentLevel: xpProgression.currentLevel,
+        currentLevelFloorXp: xpProgression.currentLevelFloorXp,
+        nextLevelFloorXp: xpProgression.nextLevelFloorXp,
+        xpIntoLevel: xpProgression.xpIntoLevel,
+        xpForNextLevel: xpProgression.xpForNextLevel,
+        xpRemainingToNextLevel: xpProgression.xpRemainingToNextLevel,
+      },
+      awakening: {
+        requiredLevel: AWAKEN_LEVEL_REQUIREMENT,
+        currentClass: character.class.name,
+        isBaseClass: isBaseClass(character.class.name),
+        isAwakenedClass: isAwakenedClass(character.class.name),
+        available: character.level >= AWAKEN_LEVEL_REQUIREMENT && awakeningTargets.length > 0,
+        hasRequiredItem: Boolean(awakenItem),
+        requiredItemType: AWAKEN_ITEM_TYPE,
+        requiredItemName: awakenItem?.name ?? "Emblema do Despertar",
+        targetClasses: targetClasses.map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          modifier: entry.modifier,
+          description: entry.description,
+          passive: entry.passive,
+        })),
       },
       recentTransactions: character.transactions,
       recentGameplayActions: character.actionLogs,

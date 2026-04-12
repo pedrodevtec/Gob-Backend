@@ -19,3 +19,13 @@ export interface UpdateCharacterPositionInput {
   posZ?: number;
   lastCheckpoint?: string;
 }
+
+export interface UpdateCharacterCustomizationInput {
+  avatarId?: string;
+  titleId?: string;
+  bannerId?: string;
+}
+
+export interface AwakenCharacterInput {
+  targetClassId: string;
+}

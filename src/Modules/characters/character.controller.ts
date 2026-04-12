@@ -84,6 +84,20 @@ export const updateCharacterPosition = asyncHandler(async (req: Request, res: Re
   sendSuccess(res, 200, { character }, "Posicao atualizada com sucesso.");
 });
 
+export const updateCharacterCustomization = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const character = await CharacterService.updateCharacterCustomization(userId, characterId, req.body);
+  sendSuccess(res, 200, { character }, "Personalizacao atualizada com sucesso.");
+});
+
+export const awakenCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.id, "id");
+  const result = await CharacterService.awakenCharacter(userId, characterId, req.body);
+  sendSuccess(res, 200, { result }, "Awaken realizado com sucesso.");
+});
+
 export const deleteCharacter = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const characterId = requireString(req.params.id, "id");

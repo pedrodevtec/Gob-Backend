@@ -1,5 +1,6 @@
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
+import { getLevelFromXp } from "../characters/character.progression";
 import { CharacterService } from "../characters/character.service";
 
 interface GrantItemInput {
@@ -105,6 +106,7 @@ export class InventoryService {
   static async useItem(userId: string, characterId: string, itemId: string, note?: string) {
     const inventory = await this.getInventoryByCharacter(userId, characterId);
     const item = inventory.items.find((entry) => entry.id === itemId);
+    const character = await CharacterService.ensureOwnership(userId, characterId);
 
     if (!item) {
       throw new AppError(404, "Item nao encontrado no inventario.", "ITEM_NOT_FOUND");
@@ -129,12 +131,14 @@ export class InventoryService {
       }
 
       if (appliedEffects.xp > 0 || appliedEffects.coins > 0) {
+        const nextXp = character.xp + appliedEffects.xp;
+        const nextLevel = Math.max(character.level, getLevelFromXp(nextXp));
+
         await tx.character.update({
           where: { id: characterId },
           data: {
-            xp: {
-              increment: appliedEffects.xp,
-            },
+            xp: nextXp,
+            level: nextLevel,
           },
         });
 

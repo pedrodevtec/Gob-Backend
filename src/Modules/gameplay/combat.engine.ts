@@ -49,9 +49,32 @@ export interface CombatCharacterStateInput extends CharacterStateInput {
 
 const DEFAULT_CRIT_CHANCE = 0.08;
 
-export const extractEffectValue = (effect: string) => {
-  const matched = effect.match(/(\d+)/);
-  return matched ? Number(matched[1]) : 0;
+export const extractEffectModifiers = (effect: string) => {
+  const modifiers = {
+    attack: 0,
+    defense: 0,
+    maxHealth: 0,
+    critChance: 0,
+  };
+
+  const matches = effect.toUpperCase().matchAll(/([+-]\d+)\s*(ATK|DEF|HP|CRIT)/g);
+
+  for (const match of matches) {
+    const amount = Number(match[1]);
+    const stat = match[2];
+
+    if (stat === "ATK") {
+      modifiers.attack += amount;
+    } else if (stat === "DEF") {
+      modifiers.defense += amount;
+    } else if (stat === "HP") {
+      modifiers.maxHealth += amount;
+    } else if (stat === "CRIT") {
+      modifiers.critChance += amount / 100;
+    }
+  }
+
+  return modifiers;
 };
 
 export const deriveCharacterStats = (input: CharacterStatsInput): DerivedStats => {
@@ -81,19 +104,11 @@ export const deriveCharacterStats = (input: CharacterStatsInput): DerivedStats =
 
   for (const effectEntry of input.equipmentEffects ?? []) {
     const effect = effectEntry ?? "";
-    const amount = extractEffectValue(effect);
-
-    if (effect.toUpperCase().includes("ATK")) {
-      baseStats.attack += amount;
-    }
-
-    if (effect.toUpperCase().includes("DEF")) {
-      baseStats.defense += amount;
-    }
-
-    if (effect.toUpperCase().includes("HP")) {
-      baseStats.maxHealth += amount;
-    }
+    const modifiers = extractEffectModifiers(effect);
+    baseStats.attack += modifiers.attack;
+    baseStats.defense += modifiers.defense;
+    baseStats.maxHealth += modifiers.maxHealth;
+    baseStats.critChance += modifiers.critChance;
   }
 
   baseStats = applyClassPassives(baseStats, input.className);
@@ -104,6 +119,11 @@ export const deriveCharacterStats = (input: CharacterStatsInput): DerivedStats =
     baseStats.defense = Math.max(0, Math.round(baseStats.defense * multiplier));
     baseStats.maxHealth = Math.max(1, Math.round(baseStats.maxHealth * multiplier));
   }
+
+  baseStats.attack = Math.max(1, Math.round(baseStats.attack));
+  baseStats.defense = Math.max(0, Math.round(baseStats.defense));
+  baseStats.maxHealth = Math.max(1, Math.round(baseStats.maxHealth));
+  baseStats.critChance = Math.min(0.95, Math.max(0, Number(baseStats.critChance.toFixed(4))));
 
   return baseStats;
 };

@@ -22,6 +22,7 @@ export class AuthService {
         nome: user.nome,
         email: user.email,
         role: user.role,
+        theme: user.theme ?? null,
       },
     };
   }
@@ -44,6 +45,7 @@ export class AuthService {
         nome: user.nome,
         email: user.email,
         role: user.role,
+        theme: user.theme ?? null,
       },
     };
   }

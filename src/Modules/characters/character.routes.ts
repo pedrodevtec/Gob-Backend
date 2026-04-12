@@ -2,6 +2,7 @@ import { Router } from "express";
 import auth from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
 import {
+  awakenCharacter,
   createCharacter,
   deleteCharacter,
   getCharacterById,
@@ -11,11 +12,14 @@ import {
   getCharacters,
   listClasses,
   updateCharacter,
+  updateCharacterCustomization,
   updateCharacterPosition,
   updateCharacterProgress,
 } from "./character.controller";
 import {
+  validateAwakenCharacter,
   validateCreateCharacter,
+  validateUpdateCharacterCustomization,
   validateUpdateCharacterPosition,
   validateUpdateCharacterProfile,
   validateUpdateCharacterProgress,
@@ -36,6 +40,8 @@ router.get("/:id/summary", getCharacterSummary);
 router.put("/:id", validate(validateUpdateCharacterProfile), updateCharacter);
 router.patch("/:id/progress", validate(validateUpdateCharacterProgress), updateCharacterProgress);
 router.patch("/:id/position", validate(validateUpdateCharacterPosition), updateCharacterPosition);
+router.patch("/:id/customization", validate(validateUpdateCharacterCustomization), updateCharacterCustomization);
+router.post("/:id/awaken", validate(validateAwakenCharacter), awakenCharacter);
 router.delete("/:id", deleteCharacter);
 
 export default router;

@@ -1,6 +1,7 @@
 import { CharacterStatus, Prisma } from "@prisma/client";
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
+import { getLevelFromXp } from "../characters/character.progression";
 import { CharacterService } from "../characters/character.service";
 import {
   deriveCharacterState,
@@ -1098,7 +1099,7 @@ export class GameplayService {
     const previousXp = character.xp;
     const previousLevel = character.level;
     const currentXp = previousXp + xpGain;
-    const currentLevel = Math.max(previousLevel, Math.floor(currentXp / 100) + 1);
+    const currentLevel = Math.max(previousLevel, getLevelFromXp(currentXp));
 
     await tx.character.update({
       where: { id: characterId },

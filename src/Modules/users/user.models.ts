@@ -21,6 +21,7 @@ export default class UserModel {
         nome: true,
         email: true,
         role: true,
+        theme: true,
       },
     });
 
@@ -40,6 +41,7 @@ export default class UserModel {
         nome: true,
         email: true,
         role: true,
+        theme: true,
       },
     });
   }

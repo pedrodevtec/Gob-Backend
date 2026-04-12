@@ -68,6 +68,7 @@ export const openApiDocument = {
           nome: { type: "string" },
           email: { type: "string", format: "email" },
           role: { type: "string", enum: ["PLAYER", "ADMIN"] },
+          theme: { type: "string", nullable: true },
         },
       },
       Class: {
@@ -91,6 +92,9 @@ export const openApiDocument = {
           status: { type: "string", enum: ["READY", "WOUNDED", "DEFEATED"] },
           lastCombatAt: { type: "string", format: "date-time", nullable: true },
           lastRecoveredAt: { type: "string", format: "date-time", nullable: true },
+          avatarId: { type: "string", nullable: true },
+          titleId: { type: "string", nullable: true },
+          bannerId: { type: "string", nullable: true },
           classId: { type: "string" },
           inventoryId: { type: "string", nullable: true },
         },
@@ -152,6 +156,14 @@ export const openApiDocument = {
               modifier: { type: "string" },
               description: { type: "string" },
               passive: { type: "string", nullable: true },
+            },
+          },
+          customization: {
+            type: "object",
+            properties: {
+              avatarId: { type: "string", nullable: true },
+              titleId: { type: "string", nullable: true },
+              bannerId: { type: "string", nullable: true },
             },
           },
           stats: {
@@ -383,6 +395,7 @@ export const openApiDocument = {
         properties: {
           nome: { type: "string" },
           email: { type: "string", format: "email" },
+          theme: { type: "string", enum: ["default", "ocean", "ember", "verdant"] },
         },
       },
       CreateCharacterRequest: {
@@ -412,6 +425,14 @@ export const openApiDocument = {
           posY: { type: "number" },
           posZ: { type: "number" },
           lastCheckpoint: { type: "string" },
+        },
+      },
+      UpdateCharacterCustomizationRequest: {
+        type: "object",
+        properties: {
+          avatarId: { type: "string", enum: ["blade", "crown", "phoenix", "moon"] },
+          titleId: { type: "string", enum: ["wanderer", "hunter", "warden", "arcanist"] },
+          bannerId: { type: "string", enum: ["royal", "ocean", "ember", "verdant"] },
         },
       },
       ClaimRewardRequest: {
@@ -876,6 +897,23 @@ export const openApiDocument = {
         parameters: [idPathParam],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/UpdateCharacterPositionRequest" } } } },
         responses: { "200": { description: "Posicao atualizada" } },
+      },
+    },
+    "/api/v1/characters/{id}/customization": {
+      patch: {
+        tags: ["Characters"],
+        summary: "Atualizar personalizacao visual do personagem",
+        security: authSecurity,
+        parameters: [idPathParam],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UpdateCharacterCustomizationRequest" },
+            },
+          },
+        },
+        responses: { "200": { description: "Personalizacao atualizada" } },
       },
     },
     "/api/v1/inventory/characters/{characterId}": { get: { tags: ["Inventory"], summary: "Obter inventario", security: authSecurity, parameters: [characterIdPathParam], responses: { "200": { description: "Inventario retornado" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } } },

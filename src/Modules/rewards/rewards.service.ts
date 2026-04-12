@@ -1,11 +1,12 @@
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
+import { getLevelFromXp } from "../characters/character.progression";
 import { CharacterService } from "../characters/character.service";
 import { ClaimRewardInput } from "./rewards.types";
 
 export class RewardsService {
   static async claim(userId: string, input: ClaimRewardInput) {
-    await CharacterService.ensureOwnership(userId, input.characterId);
+    const character = await CharacterService.ensureOwnership(userId, input.characterId);
 
     const existing = await prisma.rewardClaim.findUnique({
       where: { claimKey: input.claimKey },
@@ -17,12 +18,14 @@ export class RewardsService {
 
     return prisma.$transaction(async (tx) => {
       if (input.type === "XP") {
+        const nextXp = character.xp + input.value;
+        const nextLevel = Math.max(character.level, getLevelFromXp(nextXp));
+
         await tx.character.update({
           where: { id: input.characterId },
           data: {
-            xp: {
-              increment: input.value,
-            },
+            xp: nextXp,
+            level: nextLevel,
           },
         });
       } else {

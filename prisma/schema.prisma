@@ -46,6 +46,7 @@ model User {
   email         String         @unique
   senha         String
   role          UserRole       @default(PLAYER)
+  theme         String?
   characters    Character[]    @relation("UserToCharacter")
   paymentOrders PaymentOrder[]
 }
@@ -61,6 +62,9 @@ model Character {
   lastCheckpoint String?
   lastCombatAt   DateTime?
   lastRecoveredAt DateTime?
+  avatarId       String?
+  titleId        String?
+  bannerId       String?
   posX           Float?
   posY           Float?
   posZ           Float?

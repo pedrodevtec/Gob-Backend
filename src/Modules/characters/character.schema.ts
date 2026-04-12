@@ -7,11 +7,17 @@ import {
   requireString,
 } from "../../utils/validation";
 import {
+  AwakenCharacterInput,
   CreateCharacterInput,
+  UpdateCharacterCustomizationInput,
   UpdateCharacterPositionInput,
   UpdateCharacterProfileInput,
   UpdateCharacterProgressInput,
 } from "./character.types";
+
+const allowedAvatarIds = new Set(["blade", "crown", "phoenix", "moon"]);
+const allowedTitleIds = new Set(["wanderer", "hunter", "warden", "arcanist"]);
+const allowedBannerIds = new Set(["royal", "ocean", "ember", "verdant"]);
 
 export const validateCreateCharacter = (req: Request): void => {
   const body = getBody(req);
@@ -71,6 +77,42 @@ export const validateUpdateCharacterPosition = (req: Request): void => {
     parsed.lastCheckpoint === undefined
   ) {
     throw new AppError(400, "Nenhum campo valido enviado para posicao.", "VALIDATION_ERROR");
+  }
+
+  req.body = parsed;
+};
+
+export const validateAwakenCharacter = (req: Request): void => {
+  const body = getBody(req);
+  const parsed: AwakenCharacterInput = {
+    targetClassId: requireString(body.targetClassId, "targetClassId", 1, 80),
+  };
+
+  req.body = parsed;
+};
+
+export const validateUpdateCharacterCustomization = (req: Request): void => {
+  const body = getBody(req);
+  const parsed: UpdateCharacterCustomizationInput = {
+    avatarId: optionalString(body.avatarId, "avatarId", 2, 40),
+    titleId: optionalString(body.titleId, "titleId", 2, 40),
+    bannerId: optionalString(body.bannerId, "bannerId", 2, 40),
+  };
+
+  if (parsed.avatarId && !allowedAvatarIds.has(parsed.avatarId)) {
+    throw new AppError(400, "Avatar informado invalido.", "VALIDATION_ERROR");
+  }
+
+  if (parsed.titleId && !allowedTitleIds.has(parsed.titleId)) {
+    throw new AppError(400, "Titulo informado invalido.", "VALIDATION_ERROR");
+  }
+
+  if (parsed.bannerId && !allowedBannerIds.has(parsed.bannerId)) {
+    throw new AppError(400, "Banner informado invalido.", "VALIDATION_ERROR");
+  }
+
+  if (parsed.avatarId === undefined && parsed.titleId === undefined && parsed.bannerId === undefined) {
+    throw new AppError(400, "Nenhum campo valido enviado para personalizacao.", "VALIDATION_ERROR");
   }
 
   req.body = parsed;
