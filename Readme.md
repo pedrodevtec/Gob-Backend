@@ -41,6 +41,28 @@ npx prisma db seed
 npm run dev
 ```
 
+### Manutencao de dados
+
+Para resetar dados de personagens e/ou remover missoes criadas manualmente:
+
+```bash
+npm run db:reset-game-state -- --reset-characters
+npm run db:reset-game-state -- --delete-admin-missions
+npm run db:reset-game-state -- --reset-characters --delete-admin-missions
+```
+
+Por seguranca, o script roda em `dry-run` por padrao. Para apagar de fato:
+
+```bash
+npm run db:reset-game-state -- --reset-characters --delete-admin-missions --confirm
+```
+
+Observacoes:
+- `--reset-characters` limpa `Character`, `Inventory`, `Item`, `Equipment`, `Transaction`, `CharacterActionLog`, `RewardClaim` e `PaymentOrder`
+- `--delete-admin-missions` remove apenas missoes com titulo fora da lista seedada
+- `--delete-all-missions` remove todas as missoes da tabela `MissionDefinition`
+- como `MissionDefinition` nao possui campo `createdBy`, a separacao entre seed e admin hoje e feita por titulo das missoes seedadas
+
 ## Health
 
 - `GET /health`
@@ -451,14 +473,25 @@ Body:
 }
 ```
 
+Para NPC com `interactionType = "buffer"`:
+
+```json
+{
+  "npcId": "uuid-do-npc-buffer",
+  "buffPercent": 4
+}
+```
+
 Retorno relevante para UI:
 - `result.note`
 - `result.rewards`
+- `result.buff`
 - `result.characterState`
 - `result.availability.nextAvailableAt`
 
 Observacao:
 - se `interactionType` for `healer`, o backend devolve HP cheio em `characterState`
+- se `interactionType` for `buffer`, o backend aceita `buffPercent` com `2`, `4` ou `6`, cobra coins e aplica buff temporario
 
 ### Executar acao de mercado
 
@@ -684,6 +717,42 @@ Body:
 - `PATCH /api/v1/admin/missions/:id`
 - `PATCH /api/v1/admin/trainings/:id`
 - `PATCH /api/v1/admin/npcs/:id`
+- `PATCH /api/v1/admin/shop-products/:id`
+
+### Excluir conteudo
+
+- `DELETE /api/v1/admin/monsters/:id`
+- `DELETE /api/v1/admin/bounties/:id`
+- `DELETE /api/v1/admin/missions/:id`
+- `DELETE /api/v1/admin/trainings/:id`
+- `DELETE /api/v1/admin/npcs/:id`
+- `DELETE /api/v1/admin/shop-products/:id`
+
+### Gerenciar produtos da loja
+
+- `GET /api/v1/admin/shop-products`
+- `POST /api/v1/admin/shop-products`
+- `PATCH /api/v1/admin/shop-products/:id`
+- `DELETE /api/v1/admin/shop-products/:id`
+
+Body de exemplo:
+
+```json
+{
+  "slug": "starter-sword",
+  "name": "Espada Inicial",
+  "description": "Equipamento basico para novos jogadores.",
+  "category": "weapon",
+  "type": "weapon",
+  "img": "/assets/items/starter-sword.png",
+  "effect": "+4 ATK",
+  "assetKind": "EQUIPMENT",
+  "price": 90,
+  "currency": "BRL",
+  "rewardQuantity": 1,
+  "isActive": true
+}
+```
 
 Exemplo de patch:
 

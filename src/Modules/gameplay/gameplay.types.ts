@@ -19,6 +19,7 @@ export interface TrainingInput {
 
 export interface NpcInteractionInput {
   npcId: string;
+  buffPercent?: 2 | 4 | 6;
 }
 
 export interface MarketActionInput {

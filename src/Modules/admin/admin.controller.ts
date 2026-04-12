@@ -20,6 +20,12 @@ export const updateMonster = asyncHandler(async (req: Request, res: Response) =>
   sendSuccess(res, 200, { monster }, "Monstro atualizado com sucesso.");
 });
 
+export const deleteMonster = asyncHandler(async (req: Request, res: Response) => {
+  const monsterId = requireString(req.params.id, "id");
+  const result = await AdminService.deleteMonster(monsterId);
+  sendSuccess(res, 200, result);
+});
+
 export const listBounties = asyncHandler(async (_req: Request, res: Response) => {
   const bounties = await AdminService.listBounties();
   sendSuccess(res, 200, { bounties });
@@ -34,6 +40,12 @@ export const updateBounty = asyncHandler(async (req: Request, res: Response) => 
   const bountyId = requireString(req.params.id, "id");
   const bounty = await AdminService.updateBounty(bountyId, req.body);
   sendSuccess(res, 200, { bounty }, "Bounty atualizada com sucesso.");
+});
+
+export const deleteBounty = asyncHandler(async (req: Request, res: Response) => {
+  const bountyId = requireString(req.params.id, "id");
+  const result = await AdminService.deleteBounty(bountyId);
+  sendSuccess(res, 200, result);
 });
 
 export const listMissions = asyncHandler(async (_req: Request, res: Response) => {
@@ -52,6 +64,12 @@ export const updateMission = asyncHandler(async (req: Request, res: Response) =>
   sendSuccess(res, 200, { mission }, "Missao atualizada com sucesso.");
 });
 
+export const deleteMission = asyncHandler(async (req: Request, res: Response) => {
+  const missionId = requireString(req.params.id, "id");
+  const result = await AdminService.deleteMission(missionId);
+  sendSuccess(res, 200, result);
+});
+
 export const listTrainings = asyncHandler(async (_req: Request, res: Response) => {
   const trainings = await AdminService.listTrainings();
   sendSuccess(res, 200, { trainings });
@@ -68,6 +86,12 @@ export const updateTraining = asyncHandler(async (req: Request, res: Response) =
   sendSuccess(res, 200, { training }, "Treinamento atualizado com sucesso.");
 });
 
+export const deleteTraining = asyncHandler(async (req: Request, res: Response) => {
+  const trainingId = requireString(req.params.id, "id");
+  const result = await AdminService.deleteTraining(trainingId);
+  sendSuccess(res, 200, result);
+});
+
 export const listNpcs = asyncHandler(async (_req: Request, res: Response) => {
   const npcs = await AdminService.listNpcs();
   sendSuccess(res, 200, { npcs });
@@ -82,4 +106,32 @@ export const updateNpc = asyncHandler(async (req: Request, res: Response) => {
   const npcId = requireString(req.params.id, "id");
   const npc = await AdminService.updateNpc(npcId, req.body);
   sendSuccess(res, 200, { npc }, "NPC atualizado com sucesso.");
+});
+
+export const deleteNpc = asyncHandler(async (req: Request, res: Response) => {
+  const npcId = requireString(req.params.id, "id");
+  const result = await AdminService.deleteNpc(npcId);
+  sendSuccess(res, 200, result);
+});
+
+export const listShopProducts = asyncHandler(async (_req: Request, res: Response) => {
+  const products = await AdminService.listShopProducts();
+  sendSuccess(res, 200, { products });
+});
+
+export const createShopProduct = asyncHandler(async (req: Request, res: Response) => {
+  const product = await AdminService.createShopProduct(req.body);
+  sendSuccess(res, 201, { product }, "Produto da loja criado com sucesso.");
+});
+
+export const updateShopProduct = asyncHandler(async (req: Request, res: Response) => {
+  const productId = requireString(req.params.id, "id");
+  const product = await AdminService.updateShopProduct(productId, req.body);
+  sendSuccess(res, 200, { product }, "Produto da loja atualizado com sucesso.");
+});
+
+export const deleteShopProduct = asyncHandler(async (req: Request, res: Response) => {
+  const productId = requireString(req.params.id, "id");
+  const result = await AdminService.deleteShopProduct(productId);
+  sendSuccess(res, 200, result);
 });

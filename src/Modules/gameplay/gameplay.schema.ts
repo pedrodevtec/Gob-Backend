@@ -1,6 +1,6 @@
 import { Request } from "express";
 import { AppError } from "../../errors/AppError";
-import { getBody, optionalString, requireString } from "../../utils/validation";
+import { getBody, optionalNumber, optionalString, requireString } from "../../utils/validation";
 import {
   BountyHuntInput,
   MarketActionInput,
@@ -56,8 +56,19 @@ export const validateTraining = (req: Request): void => {
 
 export const validateNpcInteraction = (req: Request): void => {
   const body = getBody(req);
+  const buffPercent = optionalNumber(body.buffPercent, "buffPercent", { min: 2, max: 6 });
+
+  if (buffPercent !== undefined && ![2, 4, 6].includes(buffPercent)) {
+    throw new AppError(
+      400,
+      "Campo buffPercent deve ser um dos valores: 2, 4, 6.",
+      "VALIDATION_ERROR"
+    );
+  }
+
   const parsed: NpcInteractionInput = {
     npcId: requireString(body.npcId, "npcId", 1, 80),
+    ...(buffPercent !== undefined ? { buffPercent: buffPercent as 2 | 4 | 6 } : {}),
   };
 
   req.body = parsed;

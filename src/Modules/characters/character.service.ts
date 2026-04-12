@@ -179,6 +179,7 @@ export class CharacterService {
     const startingStats = deriveCharacterStats({
       level: 1,
       classModifier: characterClass.modifier,
+      className: characterClass.name,
     });
 
     return prisma.$transaction(async (tx) => {
@@ -277,6 +278,7 @@ export class CharacterService {
     const stats = deriveCharacterStats({
       level: character.level,
       classModifier: character.class.modifier,
+      className: character.class.name,
       equipmentEffects: equippedEffects,
     });
 

@@ -12,11 +12,13 @@ import {
   CreateMissionInput,
   CreateMonsterInput,
   CreateNpcInput,
+  CreateShopProductInput,
   CreateTrainingInput,
   UpdateBountyInput,
   UpdateMissionInput,
   UpdateMonsterInput,
   UpdateNpcInput,
+  UpdateShopProductInput,
   UpdateTrainingInput,
 } from "./admin.types";
 
@@ -52,6 +54,24 @@ const optionalDifficulty = (value: unknown, fieldName: string) => {
   }
 
   return requireDifficulty(value, fieldName);
+};
+
+const requireAssetKind = (value: unknown, fieldName: string) => {
+  const assetKind = requireString(value, fieldName, 1, 20) as "ITEM" | "EQUIPMENT" | "COINS";
+
+  if (!["ITEM", "EQUIPMENT", "COINS"].includes(assetKind)) {
+    throw new AppError(400, `Campo ${fieldName} invalido.`, "VALIDATION_ERROR");
+  }
+
+  return assetKind;
+};
+
+const optionalAssetKind = (value: unknown, fieldName: string) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return requireAssetKind(value, fieldName);
 };
 
 const requireIsoDate = (value: unknown, fieldName: string) => {
@@ -355,6 +375,49 @@ export const validateUpdateNpc = (req: Request): void => {
   };
 
   ensureHasFields(parsed, "npc");
+  req.body = parsed;
+};
+
+export const validateCreateShopProduct = (req: Request): void => {
+  const body = getBody(req);
+  const parsed: CreateShopProductInput = {
+    slug: requireString(body.slug, "slug", 2, 100),
+    name: requireString(body.name, "name", 2, 100),
+    description: optionalString(body.description, "description", 1, 500),
+    category: requireString(body.category, "category", 2, 60),
+    type: requireString(body.type, "type", 2, 60),
+    img: requireString(body.img, "img", 1, 255),
+    effect: optionalString(body.effect, "effect", 1, 255),
+    assetKind: requireAssetKind(body.assetKind, "assetKind"),
+    price: requirePositiveInt(body.price, "price", { min: 0, max: 1_000_000 }),
+    currency: optionalString(body.currency, "currency", 2, 10),
+    rewardCoins: optionalNumber(body.rewardCoins, "rewardCoins", { min: 0, max: 1_000_000 }),
+    rewardQuantity: optionalNumber(body.rewardQuantity, "rewardQuantity", { min: 1, max: 999 }),
+    isActive: parseBoolean(body.isActive, "isActive"),
+  };
+
+  req.body = parsed;
+};
+
+export const validateUpdateShopProduct = (req: Request): void => {
+  const body = getBody(req);
+  const parsed: UpdateShopProductInput = {
+    slug: optionalString(body.slug, "slug", 2, 100),
+    name: optionalString(body.name, "name", 2, 100),
+    description: optionalString(body.description, "description", 1, 500),
+    category: optionalString(body.category, "category", 2, 60),
+    type: optionalString(body.type, "type", 2, 60),
+    img: optionalString(body.img, "img", 1, 255),
+    effect: optionalString(body.effect, "effect", 1, 255),
+    assetKind: optionalAssetKind(body.assetKind, "assetKind"),
+    price: optionalNumber(body.price, "price", { min: 0, max: 1_000_000 }),
+    currency: optionalString(body.currency, "currency", 2, 10),
+    rewardCoins: optionalNumber(body.rewardCoins, "rewardCoins", { min: 0, max: 1_000_000 }),
+    rewardQuantity: optionalNumber(body.rewardQuantity, "rewardQuantity", { min: 1, max: 999 }),
+    isActive: parseBoolean(body.isActive, "isActive"),
+  };
+
+  ensureHasFields(parsed, "produto da loja");
   req.body = parsed;
 };
 

@@ -20,6 +20,7 @@
     "install:build": "npm install && tsc",
     "prisma:generate": "prisma generate",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "db:reset-game-state": "ts-node scripts/reset-game-state.ts",
     "test:combat": "node --require ts-node/register src/Modules/gameplay/__tests__/combat.engine.runner.ts",
     "test:market": "node --require ts-node/register src/Modules/shop/__tests__/shop.market.runner.ts",
     "test": "npm run test:combat && npm run test:market",

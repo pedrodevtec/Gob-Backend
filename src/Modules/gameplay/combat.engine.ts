@@ -1,3 +1,5 @@
+import { applyClassPassives } from "./class.effects";
+
 export type CharacterStateStatus = "READY" | "WOUNDED" | "DEFEATED";
 
 export interface DerivedStats {
@@ -31,7 +33,9 @@ export interface AvailabilityResult {
 export interface CharacterStatsInput {
   level: number;
   classModifier: string;
+  className?: string;
   equipmentEffects?: Array<string | null | undefined>;
+  buffPercent?: number;
 }
 
 export interface CharacterStateInput {
@@ -51,7 +55,7 @@ export const extractEffectValue = (effect: string) => {
 };
 
 export const deriveCharacterStats = (input: CharacterStatsInput): DerivedStats => {
-  const baseStats: DerivedStats = {
+  let baseStats: DerivedStats = {
     attack: 10 + input.level * 3,
     defense: 6 + input.level * 2,
     maxHealth: 70 + input.level * 18,
@@ -90,6 +94,15 @@ export const deriveCharacterStats = (input: CharacterStatsInput): DerivedStats =
     if (effect.toUpperCase().includes("HP")) {
       baseStats.maxHealth += amount;
     }
+  }
+
+  baseStats = applyClassPassives(baseStats, input.className);
+
+  if (input.buffPercent && input.buffPercent > 0) {
+    const multiplier = 1 + input.buffPercent / 100;
+    baseStats.attack = Math.max(1, Math.round(baseStats.attack * multiplier));
+    baseStats.defense = Math.max(0, Math.round(baseStats.defense * multiplier));
+    baseStats.maxHealth = Math.max(1, Math.round(baseStats.maxHealth * multiplier));
   }
 
   return baseStats;

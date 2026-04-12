@@ -52,6 +52,12 @@ type ActionType = "BOUNTY_HUNT" | "MISSION" | "TRAINING" | "NPC_INTERACTION" | "
 const MARKET_ACTION_COOLDOWN_SECONDS = 300;
 const NPC_INTERACTION_COOLDOWN_SECONDS = 900;
 const MISSION_REPEAT_WINDOW_SECONDS = 1800;
+const NPC_BUFF_DURATION_SECONDS = 3600;
+const NPC_BUFF_COSTS: Record<2 | 4 | 6, number> = {
+  2: 200,
+  4: 400,
+  6: 600,
+};
 
 export class GameplayService {
   static async getJourneyOptions() {
@@ -131,6 +137,7 @@ export class GameplayService {
 
   static async executeBountyHunt(userId: string, characterId: string, input: BountyHuntInput) {
     const character = await this.getGameplayCharacter(userId, characterId);
+    const activeBuff = await this.getActiveNpcBuff(characterId);
     const bounty = await prisma.bountyHunt.findFirst({
       where: {
         id: input.bountyId,
@@ -149,7 +156,7 @@ export class GameplayService {
       throw new AppError(409, "Bounty expirada.", "BOUNTY_EXPIRED");
     }
 
-    await this.assertCombatReady(character);
+    await this.assertCombatReady(character, activeBuff?.buffPercent);
     await this.assertBountyNotAlreadyClaimed(characterId, bounty.id, bounty.timeLimit);
 
     const reward: CombatReward = {
@@ -168,7 +175,7 @@ export class GameplayService {
         : this.buildMonsterDrop(bounty.monster.name, bounty.monster.level),
     };
 
-    const vitals = this.getCharacterVitals(character);
+    const vitals = this.getCharacterVitals(character, activeBuff?.buffPercent);
     const combat = resolveCombat(
       {
         level: character.level,
@@ -186,12 +193,15 @@ export class GameplayService {
       "BOUNTY_HUNT",
       bounty.id,
       combat,
-      reward
+      reward,
+      undefined,
+      activeBuff?.buffPercent
     );
   }
 
   static async executeMission(userId: string, characterId: string, input: MissionInput) {
     const character = await this.getGameplayCharacter(userId, characterId);
+    const activeBuff = await this.getActiveNpcBuff(characterId);
     const mission = await prisma.missionDefinition.findFirst({
       where: {
         id: input.missionId,
@@ -203,7 +213,7 @@ export class GameplayService {
       throw new AppError(404, "Missao nao encontrada.", "MISSION_NOT_FOUND");
     }
 
-    await this.assertCombatReady(character);
+    await this.assertCombatReady(character, activeBuff?.buffPercent);
     const missionAvailability = await this.assertActionWindowAvailable(
       characterId,
       "MISSION",
@@ -236,7 +246,7 @@ export class GameplayService {
         : undefined,
     };
 
-    const vitals = this.getCharacterVitals(character);
+    const vitals = this.getCharacterVitals(character, activeBuff?.buffPercent);
     const combat = resolveCombat(
       {
         level: character.level,
@@ -255,7 +265,8 @@ export class GameplayService {
       mission.id,
       combat,
       reward,
-      missionAvailability.nextAvailableAt ?? undefined
+      missionAvailability.nextAvailableAt ?? undefined,
+      activeBuff?.buffPercent
     );
   }
 
@@ -358,6 +369,10 @@ export class GameplayService {
     );
 
     return prisma.$transaction(async (tx) => {
+      if (npc.interactionType.toLowerCase() === "buffer") {
+        return this.applyNpcBuff(tx, character, npc, input.buffPercent, availability.nextAvailableAt ?? undefined);
+      }
+
       const xp = npc.xpReward;
       const coins = npc.coinsReward;
       const item: CombatReward["item"] = npc.rewardItemName
@@ -544,7 +559,8 @@ export class GameplayService {
     referenceId: string,
     combat: ReturnType<typeof resolveCombat>,
     reward: CombatReward,
-    nextAvailableAt?: Date
+    nextAvailableAt?: Date,
+    buffPercent?: number
   ) {
     return prisma.$transaction(async (tx) => {
       const progression = combat.victory
@@ -581,7 +597,8 @@ export class GameplayService {
         characterId,
         combat.characterHealthRemaining,
         progression.currentLevel,
-        combat.victory
+        combat.victory,
+        buffPercent
       );
 
       await this.recordActionLog(
@@ -631,13 +648,15 @@ export class GameplayService {
     });
   }
 
-  private static getCharacterVitals(character: GameplayCharacter) {
+  private static getCharacterVitals(character: GameplayCharacter, buffPercent?: number) {
     const stats = deriveCharacterStats({
       level: character.level,
+      className: character.class.name,
       classModifier: character.class.modifier,
       equipmentEffects: character.inventory.equipments
         .filter((entry) => entry.isEquipped)
         .map((entry) => entry.effect),
+      buffPercent,
     });
     const state = deriveCharacterState({
       currentHealth: character.currentHealth,
@@ -655,14 +674,17 @@ export class GameplayService {
   private static buildCharacterStatePayload(
     character: GameplayCharacter,
     currentHealth?: number,
-    levelOverride?: number
+    levelOverride?: number,
+    buffPercent?: number
   ) {
     const stats = deriveCharacterStats({
       level: levelOverride ?? character.level,
+      className: character.class.name,
       classModifier: character.class.modifier,
       equipmentEffects: character.inventory.equipments
         .filter((entry) => entry.isEquipped)
         .map((entry) => entry.effect),
+      buffPercent,
     });
     const state = deriveCharacterState({
       currentHealth: currentHealth ?? character.currentHealth,
@@ -683,7 +705,8 @@ export class GameplayService {
     characterId: string,
     currentHealth: number,
     level: number,
-    victory: boolean
+    victory: boolean,
+    buffPercent?: number
   ) {
     const character = await tx.character.findUnique({
       where: { id: characterId },
@@ -705,7 +728,8 @@ export class GameplayService {
     const payload = this.buildCharacterStatePayload(
       character as GameplayCharacter,
       currentHealth,
-      level
+      level,
+      buffPercent
     );
 
     const now = new Date();
@@ -734,6 +758,7 @@ export class GameplayService {
   ) {
     const stats = deriveCharacterStats({
       level: levelOverride ?? character.level,
+      className: character.class.name,
       classModifier: character.class.modifier,
       equipmentEffects: character.inventory.equipments
         .filter((entry) => entry.isEquipped)
@@ -759,8 +784,8 @@ export class GameplayService {
     };
   }
 
-  private static async assertCombatReady(character: GameplayCharacter) {
-    const vitals = this.getCharacterVitals(character);
+  private static async assertCombatReady(character: GameplayCharacter, buffPercent?: number) {
+    const vitals = this.getCharacterVitals(character, buffPercent);
 
     if (vitals.currentHealth <= 0 || vitals.status === "DEFEATED") {
       throw new AppError(
@@ -834,7 +859,8 @@ export class GameplayService {
     actionType: ActionType,
     referenceId: string,
     outcome: string,
-    availableAt?: Date
+    availableAt?: Date,
+    metadata?: string
   ) {
     await tx.characterActionLog.create({
       data: {
@@ -843,8 +869,168 @@ export class GameplayService {
         referenceId,
         outcome,
         availableAt,
+        ...(metadata !== undefined ? { metadata } : {}),
       },
     });
+  }
+
+  private static async getActiveNpcBuff(characterId: string) {
+    const logs = await prisma.characterActionLog.findMany({
+      where: {
+        characterId,
+        actionType: "NPC_INTERACTION",
+        outcome: "BUFF_APPLIED",
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    const now = new Date();
+
+    for (const log of logs) {
+      if (!log.metadata) {
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(log.metadata) as {
+          buffPercent?: number;
+          expiresAt?: string;
+          cost?: number;
+          npcName?: string;
+        };
+
+        const expiresAt = parsed.expiresAt ? new Date(parsed.expiresAt) : null;
+
+        if (
+          parsed.buffPercent &&
+          expiresAt &&
+          !Number.isNaN(expiresAt.getTime()) &&
+          expiresAt > now
+        ) {
+          return {
+            buffPercent: parsed.buffPercent,
+            expiresAt,
+            cost: parsed.cost ?? 0,
+            npcName: parsed.npcName ?? null,
+          };
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  private static async applyNpcBuff(
+    tx: Prisma.TransactionClient,
+    character: GameplayCharacter,
+    npc: {
+      id: string;
+      name: string;
+      interactionType: string;
+      dialogue: string | null;
+      description: string | null;
+    },
+    requestedBuffPercent: 2 | 4 | 6 | undefined,
+    nextAvailableAt?: Date
+  ) {
+    if (!requestedBuffPercent) {
+      throw new AppError(
+        400,
+        "NPC buffer exige buffPercent com valor 2, 4 ou 6.",
+        "BUFF_PERCENT_REQUIRED"
+      );
+    }
+
+    const activeBuff = await this.getActiveNpcBuff(character.id);
+
+    if (activeBuff) {
+      throw new AppError(
+        409,
+        "Ja existe um buff ativo neste personagem.",
+        "BUFF_ALREADY_ACTIVE",
+        { expiresAt: activeBuff.expiresAt }
+      );
+    }
+
+    const cost = NPC_BUFF_COSTS[requestedBuffPercent];
+
+    if (character.inventory.coins < cost) {
+      throw new AppError(409, "Gold insuficiente para aplicar o buff.", "INSUFFICIENT_COINS");
+    }
+
+    const updatedInventory = await tx.inventory.update({
+      where: { id: character.inventory.id },
+      data: {
+        coins: {
+          decrement: cost,
+        },
+      },
+    });
+
+    const expiresAt = new Date(Date.now() + NPC_BUFF_DURATION_SECONDS * 1000);
+    const characterState = this.buildCharacterStatePayload(
+      character,
+      undefined,
+      undefined,
+      requestedBuffPercent
+    );
+
+    await this.recordActionLog(
+      tx,
+      character.id,
+      "NPC_INTERACTION",
+      npc.id,
+      "BUFF_APPLIED",
+      nextAvailableAt,
+      JSON.stringify({
+        npcName: npc.name,
+        buffPercent: requestedBuffPercent,
+        cost,
+        expiresAt: expiresAt.toISOString(),
+      })
+    );
+
+    const transaction = await tx.transaction.create({
+      data: {
+        characterId: character.id,
+        type: "NPC_BUFF_PURCHASE",
+        value: -cost,
+      },
+    });
+
+    return {
+      action: "NPC_INTERACTION",
+      npcId: npc.id,
+      interactionType: npc.interactionType,
+      npcName: npc.name,
+      note:
+        npc.dialogue ??
+        npc.description ??
+        `Buff de ${requestedBuffPercent}% aplicado por ${NPC_BUFF_DURATION_SECONDS / 60} minutos.`,
+      rewards: {
+        xp: 0,
+        coins: -cost,
+        item: null,
+      },
+      buff: {
+        percent: requestedBuffPercent,
+        cost,
+        expiresAt,
+      },
+      inventory: {
+        id: updatedInventory.id,
+        coins: updatedInventory.coins,
+      },
+      characterState,
+      availability: {
+        actionType: "NPC_INTERACTION",
+        nextAvailableAt: nextAvailableAt ?? null,
+      },
+      transaction,
+    };
   }
 
   private static buildMonsterDrop(monsterName: string, monsterLevel: number): CombatReward["item"] {

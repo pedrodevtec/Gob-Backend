@@ -86,3 +86,21 @@ export interface CreateNpcInput {
 }
 
 export interface UpdateNpcInput extends Partial<CreateNpcInput> {}
+
+export interface CreateShopProductInput {
+  slug: string;
+  name: string;
+  description?: string;
+  category: string;
+  type: string;
+  img: string;
+  effect?: string;
+  assetKind: "ITEM" | "EQUIPMENT" | "COINS";
+  price: number;
+  currency?: string;
+  rewardCoins?: number;
+  rewardQuantity?: number;
+  isActive?: boolean;
+}
+
+export interface UpdateShopProductInput extends Partial<CreateShopProductInput> {}

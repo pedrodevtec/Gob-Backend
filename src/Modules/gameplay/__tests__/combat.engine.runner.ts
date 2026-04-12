@@ -30,6 +30,45 @@ run("deriveCharacterStats aplica modificadores de classe e equipamentos", () => 
   assert.equal(stats.critChance, 0.18);
 });
 
+run("deriveCharacterStats aplica passiva de classe por nome", () => {
+  const stats = deriveCharacterStats({
+    level: 10,
+    className: "Paladin",
+    classModifier: "STR",
+  });
+
+  assert.equal(stats.attack, 46);
+  assert.equal(stats.defense, 32);
+  assert.equal(stats.maxHealth, 300);
+  assert.equal(stats.critChance, 0.08);
+});
+
+run("deriveCharacterStats aplica tradeoff ofensivo de Assassin", () => {
+  const stats = deriveCharacterStats({
+    level: 10,
+    className: "Assassin",
+    classModifier: "DEX",
+  });
+
+  assert.equal(stats.attack, 50);
+  assert.equal(stats.defense, 29);
+  assert.equal(stats.maxHealth, 246);
+  assert.equal(stats.critChance, 0.28);
+});
+
+run("deriveCharacterStats aplica buff percentual aos atributos base", () => {
+  const stats = deriveCharacterStats({
+    level: 3,
+    classModifier: "STR",
+    equipmentEffects: ["+5 ATK"],
+    buffPercent: 4,
+  });
+
+  assert.equal(stats.attack, 31);
+  assert.equal(stats.defense, 17);
+  assert.equal(stats.maxHealth, 148);
+});
+
 run("deriveCharacterState marca personagem derrotado quando hp chega a zero", () => {
   const state = deriveCharacterState({
     currentHealth: -4,

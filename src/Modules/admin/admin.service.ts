@@ -5,11 +5,13 @@ import {
   CreateMissionInput,
   CreateMonsterInput,
   CreateNpcInput,
+  CreateShopProductInput,
   CreateTrainingInput,
   UpdateBountyInput,
   UpdateMissionInput,
   UpdateMonsterInput,
   UpdateNpcInput,
+  UpdateShopProductInput,
   UpdateTrainingInput,
 } from "./admin.types";
 
@@ -33,6 +35,28 @@ export class AdminService {
       where: { id: monsterId },
       data: input,
     });
+  }
+
+  static async deleteMonster(monsterId: string) {
+    await this.ensureMonster(monsterId);
+
+    const linkedBounties = await prisma.bountyHunt.count({
+      where: { monsterId },
+    });
+
+    if (linkedBounties > 0) {
+      throw new AppError(
+        409,
+        "Nao e possivel excluir monstro vinculado a bounties. Remova ou altere as bounties antes.",
+        "MONSTER_IN_USE"
+      );
+    }
+
+    await prisma.monster.delete({
+      where: { id: monsterId },
+    });
+
+    return { message: "Monstro excluido com sucesso." };
   }
 
   static async listBounties() {
@@ -79,6 +103,16 @@ export class AdminService {
     });
   }
 
+  static async deleteBounty(bountyId: string) {
+    await this.ensureBounty(bountyId);
+
+    await prisma.bountyHunt.delete({
+      where: { id: bountyId },
+    });
+
+    return { message: "Bounty excluida com sucesso." };
+  }
+
   static async listMissions() {
     return prisma.missionDefinition.findMany({
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
@@ -102,6 +136,16 @@ export class AdminService {
       where: { id: missionId },
       data: input,
     });
+  }
+
+  static async deleteMission(missionId: string) {
+    await this.ensureMission(missionId);
+
+    await prisma.missionDefinition.delete({
+      where: { id: missionId },
+    });
+
+    return { message: "Missao excluida com sucesso." };
   }
 
   static async listTrainings() {
@@ -130,6 +174,16 @@ export class AdminService {
     });
   }
 
+  static async deleteTraining(trainingId: string) {
+    await this.ensureTraining(trainingId);
+
+    await prisma.trainingDefinition.delete({
+      where: { id: trainingId },
+    });
+
+    return { message: "Treinamento excluido com sucesso." };
+  }
+
   static async listNpcs() {
     return prisma.npcDefinition.findMany({
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
@@ -155,6 +209,65 @@ export class AdminService {
       where: { id: npcId },
       data: input,
     });
+  }
+
+  static async deleteNpc(npcId: string) {
+    await this.ensureNpc(npcId);
+
+    await prisma.npcDefinition.delete({
+      where: { id: npcId },
+    });
+
+    return { message: "NPC excluido com sucesso." };
+  }
+
+  static async listShopProducts() {
+    return prisma.shopProduct.findMany({
+      orderBy: [{ isActive: "desc" }, { category: "asc" }, { name: "asc" }],
+    });
+  }
+
+  static async createShopProduct(input: CreateShopProductInput) {
+    return prisma.shopProduct.create({
+      data: {
+        ...input,
+        currency: input.currency ?? "BRL",
+        rewardCoins: input.rewardCoins ?? 0,
+        rewardQuantity: input.rewardQuantity ?? 1,
+        isActive: input.isActive ?? true,
+      },
+    });
+  }
+
+  static async updateShopProduct(productId: string, input: UpdateShopProductInput) {
+    await this.ensureShopProduct(productId);
+
+    return prisma.shopProduct.update({
+      where: { id: productId },
+      data: input,
+    });
+  }
+
+  static async deleteShopProduct(productId: string) {
+    await this.ensureShopProduct(productId);
+
+    const linkedOrders = await prisma.paymentOrder.count({
+      where: { productId },
+    });
+
+    if (linkedOrders > 0) {
+      throw new AppError(
+        409,
+        "Nao e possivel excluir produto da loja com pedidos vinculados. Desative-o em vez de excluir.",
+        "SHOP_PRODUCT_IN_USE"
+      );
+    }
+
+    await prisma.shopProduct.delete({
+      where: { id: productId },
+    });
+
+    return { message: "Produto da loja excluido com sucesso." };
   }
 
   private static async ensureMonster(monsterId: string) {
@@ -215,5 +328,17 @@ export class AdminService {
     }
 
     return npc;
+  }
+
+  private static async ensureShopProduct(productId: string) {
+    const product = await prisma.shopProduct.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new AppError(404, "Produto da loja nao encontrado.", "SHOP_PRODUCT_NOT_FOUND");
+    }
+
+    return product;
   }
 }
