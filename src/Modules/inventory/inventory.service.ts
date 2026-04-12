@@ -10,6 +10,7 @@ interface GrantItemInput {
   type: string;
   img: string;
   effect?: string | null;
+  levelRequirement?: number | null;
   quantity?: number;
 }
 
@@ -111,6 +112,8 @@ export class InventoryService {
     if (!item) {
       throw new AppError(404, "Item nao encontrado no inventario.", "ITEM_NOT_FOUND");
     }
+
+    this.ensureCharacterMeetsItemRequirement(character.level, item.levelRequirement);
 
     const appliedEffects = this.resolveItemEffects(item.type, item.value);
 
@@ -264,6 +267,21 @@ export class InventoryService {
     return { xp: 0, coins: 0 };
   }
 
+  private static ensureCharacterMeetsItemRequirement(
+    characterLevel: number,
+    levelRequirement?: number | null
+  ) {
+    if (!levelRequirement || characterLevel >= levelRequirement) {
+      return;
+    }
+
+    throw new AppError(
+      409,
+      `Nivel insuficiente para usar este item. Requer level ${levelRequirement} e o personagem esta no level ${characterLevel}.`,
+      "ITEM_LEVEL_REQUIREMENT_NOT_MET"
+    );
+  }
+
   static async grantItemToInventory(inventoryId: string, item: GrantItemInput) {
     const quantity = item.quantity ?? 1;
 
@@ -279,6 +297,7 @@ export class InventoryService {
         type: item.type,
         img: item.img,
         effect: item.effect ?? null,
+        levelRequirement: item.levelRequirement ?? null,
         value: item.value,
       },
     });
@@ -303,6 +322,7 @@ export class InventoryService {
         type: item.type,
         img: item.img,
         effect: item.effect ?? null,
+        levelRequirement: item.levelRequirement ?? null,
         quantity,
       },
     });

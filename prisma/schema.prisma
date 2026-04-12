@@ -40,6 +40,24 @@ enum CharacterStatus {
   DEFEATED
 }
 
+enum TradeStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELED
+  EXPIRED
+}
+
+enum TradeParticipantSide {
+  REQUESTER
+  TARGET
+}
+
+enum TradeAssetType {
+  ITEM
+  EQUIPMENT
+}
+
 model User {
   id            String         @id @default(uuid())
   nome          String
@@ -57,6 +75,10 @@ model Character {
   name           String
   level          Int            @default(1)
   xp             Int            @default(0)
+  pvpRating      Int            @default(1000)
+  pvpWins        Int            @default(0)
+  pvpLosses      Int            @default(0)
+  lastPvpAt      DateTime?
   currentHealth  Int            @default(100)
   status         CharacterStatus @default(READY)
   lastCheckpoint String?
@@ -79,6 +101,12 @@ model Character {
   actionLogs    CharacterActionLog[]
   paymentOrders PaymentOrder[]
   rewardClaims  RewardClaim[]
+  sentTrades    Trade[]        @relation("TradeRequesterCharacter")
+  receivedTrades Trade[]       @relation("TradeTargetCharacter")
+  pvpMatchesAsChallenger PvpMatch[] @relation("PvpMatchChallenger")
+  pvpMatchesAsOpponent  PvpMatch[] @relation("PvpMatchOpponent")
+  pvpWinsAsWinner       PvpMatch[] @relation("PvpMatchWinner")
+  pvpLossesAsLoser      PvpMatch[] @relation("PvpMatchLoser")
 }
 
 model Inventory {
@@ -98,6 +126,7 @@ model Item {
   type        String
   img         String
   effect      String?
+  levelRequirement Int?
   quantity    Int       @default(1)
   inventoryId String
   monsterId   String?
@@ -124,6 +153,8 @@ model Equipment {
 model Class {
   id          String      @id @default(uuid())
   name        String      @unique
+  tier        Int         @default(1)
+  evolvesFrom String?
   modifier    String
   description String
   passive     String?
@@ -263,6 +294,7 @@ model ShopProduct {
   type           String
   img            String
   effect         String?
+  levelRequirement Int?
   assetKind      ShopProductAssetKind
   price          Int
   currency       String               @default("BRL")
@@ -309,4 +341,59 @@ model RewardClaim {
   claimedAt   DateTime @default(now())
 
   character Character @relation(fields: [characterId], references: [id])
+}
+
+model Trade {
+  id                   String      @id @default(uuid())
+  requesterCharacterId String
+  targetCharacterId    String
+  offeredCoins         Int         @default(0)
+  requestedCoins       Int         @default(0)
+  status               TradeStatus @default(PENDING)
+  note                 String?
+  expiresAt            DateTime
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  requesterCharacter Character   @relation("TradeRequesterCharacter", fields: [requesterCharacterId], references: [id])
+  targetCharacter    Character   @relation("TradeTargetCharacter", fields: [targetCharacterId], references: [id])
+  assets             TradeAsset[]
+
+  @@index([requesterCharacterId, status, createdAt])
+  @@index([targetCharacterId, status, createdAt])
+}
+
+model TradeAsset {
+  id         String               @id @default(uuid())
+  tradeId    String
+  side       TradeParticipantSide
+  assetType  TradeAssetType
+  assetId    String
+  quantity   Int                  @default(1)
+  createdAt  DateTime             @default(now())
+
+  trade Trade @relation(fields: [tradeId], references: [id])
+
+  @@index([tradeId, side])
+}
+
+model PvpMatch {
+  id                   String   @id @default(uuid())
+  challengerCharacterId String
+  opponentCharacterId   String
+  winnerCharacterId     String
+  loserCharacterId      String
+  challengerRatingBefore Int
+  challengerRatingAfter  Int
+  opponentRatingBefore   Int
+  opponentRatingAfter    Int
+  createdAt             DateTime @default(now())
+
+  challengerCharacter Character @relation("PvpMatchChallenger", fields: [challengerCharacterId], references: [id])
+  opponentCharacter   Character @relation("PvpMatchOpponent", fields: [opponentCharacterId], references: [id])
+  winnerCharacter     Character @relation("PvpMatchWinner", fields: [winnerCharacterId], references: [id])
+  loserCharacter      Character @relation("PvpMatchLoser", fields: [loserCharacterId], references: [id])
+
+  @@index([createdAt])
+  @@index([winnerCharacterId, createdAt])
 }

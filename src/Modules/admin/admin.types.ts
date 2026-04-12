@@ -95,6 +95,7 @@ export interface CreateShopProductInput {
   type: string;
   img: string;
   effect?: string;
+  levelRequirement?: number;
   assetKind: "ITEM" | "EQUIPMENT" | "COINS";
   price: number;
   currency?: string;

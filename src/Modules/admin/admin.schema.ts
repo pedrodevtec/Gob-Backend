@@ -388,6 +388,10 @@ export const validateCreateShopProduct = (req: Request): void => {
     type: requireString(body.type, "type", 2, 60),
     img: requireString(body.img, "img", 1, 255),
     effect: optionalString(body.effect, "effect", 1, 255),
+    levelRequirement: optionalNumber(body.levelRequirement, "levelRequirement", {
+      min: 1,
+      max: 999,
+    }),
     assetKind: requireAssetKind(body.assetKind, "assetKind"),
     price: requirePositiveInt(body.price, "price", { min: 0, max: 1_000_000 }),
     currency: optionalString(body.currency, "currency", 2, 10),
@@ -409,6 +413,10 @@ export const validateUpdateShopProduct = (req: Request): void => {
     type: optionalString(body.type, "type", 2, 60),
     img: optionalString(body.img, "img", 1, 255),
     effect: optionalString(body.effect, "effect", 1, 255),
+    levelRequirement: optionalNumber(body.levelRequirement, "levelRequirement", {
+      min: 1,
+      max: 999,
+    }),
     assetKind: optionalAssetKind(body.assetKind, "assetKind"),
     price: optionalNumber(body.price, "price", { min: 0, max: 1_000_000 }),
     currency: optionalString(body.currency, "currency", 2, 10),

@@ -1,19 +1,17 @@
-export const AWAKEN_LEVEL_REQUIREMENT = 30;
 export const AWAKEN_ITEM_TYPE = "awakening_token";
-
-const BASE_CLASS_BRANCHES: Record<string, string[]> = {
-  Warrior: ["Paladin", "Berserker"],
-  Mage: ["Sorcerer", "Cleric"],
-  Rogue: ["Ranger", "Assassin"],
+export const MAX_CHARACTER_LEVEL = 60;
+const AWAKEN_LEVEL_REQUIREMENTS_BY_TIER: Record<number, number> = {
+  1: 25,
+  2: 45,
 };
 
 export const getXpRequiredForNextLevel = (level: number) => {
-  const safeLevel = Math.max(1, Math.floor(level));
+  const safeLevel = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, Math.floor(level)));
   return 100 + (safeLevel - 1) * 50;
 };
 
 export const getTotalXpForLevel = (level: number) => {
-  const safeLevel = Math.max(1, Math.floor(level));
+  const safeLevel = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, Math.floor(level)));
   let total = 0;
 
   for (let currentLevel = 1; currentLevel < safeLevel; currentLevel += 1) {
@@ -27,7 +25,7 @@ export const getLevelFromXp = (xp: number) => {
   const safeXp = Math.max(0, Math.floor(xp));
   let level = 1;
 
-  while (getTotalXpForLevel(level + 1) <= safeXp) {
+  while (level < MAX_CHARACTER_LEVEL && getTotalXpForLevel(level + 1) <= safeXp) {
     level += 1;
   }
 
@@ -38,7 +36,8 @@ export const getXpProgression = (xp: number) => {
   const safeXp = Math.max(0, Math.floor(xp));
   const currentLevel = getLevelFromXp(safeXp);
   const currentLevelFloorXp = getTotalXpForLevel(currentLevel);
-  const nextLevelFloorXp = getTotalXpForLevel(currentLevel + 1);
+  const nextLevelFloorXp =
+    currentLevel >= MAX_CHARACTER_LEVEL ? currentLevelFloorXp : getTotalXpForLevel(currentLevel + 1);
   const xpIntoLevel = safeXp - currentLevelFloorXp;
   const xpForNextLevel = nextLevelFloorXp - currentLevelFloorXp;
 
@@ -52,14 +51,14 @@ export const getXpProgression = (xp: number) => {
   };
 };
 
-export const getAwakeningTargetsByClassName = (className: string) => {
-  return BASE_CLASS_BRANCHES[className] ?? [];
+export const getAwakenLevelRequirementForTier = (tier: number) => {
+  return AWAKEN_LEVEL_REQUIREMENTS_BY_TIER[tier] ?? null;
 };
 
-export const isBaseClass = (className: string) => {
-  return className in BASE_CLASS_BRANCHES;
+export const isBaseClassTier = (tier: number) => {
+  return tier <= 1;
 };
 
-export const isAwakenedClass = (className: string) => {
-  return Object.values(BASE_CLASS_BRANCHES).some((targets) => targets.includes(className));
+export const isAwakenedClassTier = (tier: number) => {
+  return tier > 1;
 };

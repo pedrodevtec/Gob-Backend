@@ -9,6 +9,16 @@ export interface DerivedStats {
   critChance: number;
 }
 
+export interface PresentedStats extends DerivedStats {
+  critChancePercent: number;
+  descriptions: {
+    attack: string;
+    defense: string;
+    maxHealth: string;
+    critChance: string;
+  };
+}
+
 export interface CombatRound {
   round: number;
   actor: "character" | "monster";
@@ -23,6 +33,24 @@ export interface CombatResult {
   enemyHealthRemaining: number;
   stats: DerivedStats;
   rounds: CombatRound[];
+}
+
+export interface PvpCombatRound {
+  round: number;
+  actor: "challenger" | "opponent";
+  damage: number;
+  remainingChallengerHealth: number;
+  remainingOpponentHealth: number;
+  critical: boolean;
+}
+
+export interface PvpCombatResult {
+  winner: "challenger" | "opponent";
+  challengerHealthRemaining: number;
+  opponentHealthRemaining: number;
+  challengerStats: DerivedStats;
+  opponentStats: DerivedStats;
+  rounds: PvpCombatRound[];
 }
 
 export interface AvailabilityResult {
@@ -128,6 +156,26 @@ export const deriveCharacterStats = (input: CharacterStatsInput): DerivedStats =
   return baseStats;
 };
 
+export const presentDerivedStats = (stats: DerivedStats): PresentedStats => {
+  const critChancePercent = Number((stats.critChance * 100).toFixed(2));
+
+  return {
+    ...stats,
+    critChancePercent,
+    descriptions: {
+      attack:
+        `ATK define o dano base causado por ataque antes da defesa inimiga, variacao aleatoria e critico. ` +
+        `Cada ponto extra de ATK aumenta sua pressao ofensiva de forma direta.`,
+      defense:
+        `DEF reduz o dano recebido em cada golpe inimigo. Quanto maior a DEF, menor a perda de HP por turno.`,
+      maxHealth:
+        `HP define a vida maxima do personagem e quanto dano total ele suporta antes de cair.`,
+      critChance:
+        `CRIT e a chance de um ataque causar dano critico. Atualmente ${critChancePercent}% de chance gera um golpe com multiplicador de 1.5x no dano.`,
+    },
+  };
+};
+
 export const deriveCharacterState = (
   input: CharacterStateInput
 ): { currentHealth: number; status: CharacterStateStatus } => {
@@ -206,6 +254,93 @@ export const resolveCombat = (
     characterHealthRemaining: characterHealth,
     enemyHealthRemaining: monsterHealth,
     stats,
+    rounds,
+  };
+};
+
+export const resolvePvpCombat = (
+  challengerState: CombatCharacterStateInput,
+  challengerStats: DerivedStats,
+  opponentState: CombatCharacterStateInput,
+  opponentStats: DerivedStats,
+  randomFn: () => number = Math.random
+): PvpCombatResult => {
+  let challengerHealth = Math.min(challengerState.currentHealth, challengerStats.maxHealth);
+  let opponentHealth = Math.min(opponentState.currentHealth, opponentStats.maxHealth);
+  const rounds: PvpCombatRound[] = [];
+  const effectiveMaxRounds =
+    12 + Math.max(0, Math.abs(challengerState.level - opponentState.level));
+
+  for (let index = 0; index < effectiveMaxRounds; index += 1) {
+    const challengerCrit = randomFn() <= challengerStats.critChance;
+    const challengerDamage = Math.max(
+      1,
+      Math.round(
+        (challengerStats.attack - opponentStats.defense + 6 + randomFn() * 4) *
+          (challengerCrit ? 1.5 : 1)
+      )
+    );
+    opponentHealth = Math.max(0, opponentHealth - challengerDamage);
+
+    rounds.push({
+      round: index + 1,
+      actor: "challenger",
+      damage: challengerDamage,
+      remainingChallengerHealth: challengerHealth,
+      remainingOpponentHealth: opponentHealth,
+      critical: challengerCrit,
+    });
+
+    if (opponentHealth <= 0) {
+      return {
+        winner: "challenger",
+        challengerHealthRemaining: challengerHealth,
+        opponentHealthRemaining: opponentHealth,
+        challengerStats,
+        opponentStats,
+        rounds,
+      };
+    }
+
+    const opponentCrit = randomFn() <= opponentStats.critChance;
+    const opponentDamage = Math.max(
+      1,
+      Math.round(
+        (opponentStats.attack - challengerStats.defense + 6 + randomFn() * 4) *
+          (opponentCrit ? 1.5 : 1)
+      )
+    );
+    challengerHealth = Math.max(0, challengerHealth - opponentDamage);
+
+    rounds.push({
+      round: index + 1,
+      actor: "opponent",
+      damage: opponentDamage,
+      remainingChallengerHealth: challengerHealth,
+      remainingOpponentHealth: opponentHealth,
+      critical: opponentCrit,
+    });
+
+    if (challengerHealth <= 0) {
+      return {
+        winner: "opponent",
+        challengerHealthRemaining: challengerHealth,
+        opponentHealthRemaining: opponentHealth,
+        challengerStats,
+        opponentStats,
+        rounds,
+      };
+    }
+  }
+
+  const winner = challengerHealth >= opponentHealth ? "challenger" : "opponent";
+
+  return {
+    winner,
+    challengerHealthRemaining: challengerHealth,
+    opponentHealthRemaining: opponentHealth,
+    challengerStats,
+    opponentStats,
     rounds,
   };
 };

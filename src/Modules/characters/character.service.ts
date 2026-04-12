@@ -1,14 +1,13 @@
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
-import { deriveCharacterStats } from "../gameplay/combat.engine";
+import { deriveCharacterStats, presentDerivedStats } from "../gameplay/combat.engine";
 import {
   AWAKEN_ITEM_TYPE,
-  AWAKEN_LEVEL_REQUIREMENT,
-  getAwakeningTargetsByClassName,
+  getAwakenLevelRequirementForTier,
   getLevelFromXp,
   getXpProgression,
-  isAwakenedClass,
-  isBaseClass,
+  isAwakenedClassTier,
+  isBaseClassTier,
 } from "./character.progression";
 import {
   AwakenCharacterInput,
@@ -181,14 +180,27 @@ export class CharacterService {
 
   static async listClasses() {
     const classes = await prisma.class.findMany({
-      orderBy: { name: "asc" },
+      orderBy: [{ tier: "asc" }, { name: "asc" }],
     });
+
+    const awakenMap = new Map<string, string[]>();
+
+    for (const entry of classes) {
+      if (!entry.evolvesFrom) {
+        continue;
+      }
+
+      const targets = awakenMap.get(entry.evolvesFrom) ?? [];
+      targets.push(entry.name);
+      awakenMap.set(entry.evolvesFrom, targets);
+    }
 
     return classes.map((entry) => ({
       ...entry,
-      isBaseClass: isBaseClass(entry.name),
-      isAwakenedClass: isAwakenedClass(entry.name),
-      awakensTo: getAwakeningTargetsByClassName(entry.name),
+      isBaseClass: isBaseClassTier(entry.tier),
+      isAwakenedClass: isAwakenedClassTier(entry.tier),
+      awakensTo: awakenMap.get(entry.name) ?? [],
+      awakenLevelRequirement: getAwakenLevelRequirementForTier(entry.tier),
     }));
   }
 
@@ -340,7 +352,7 @@ export class CharacterService {
         titleId: character.titleId,
         bannerId: character.bannerId,
       },
-      stats,
+      stats: presentDerivedStats(stats),
       progression: {
         missionsCompleted,
         bountiesCompleted,
@@ -446,17 +458,28 @@ export class CharacterService {
       throw new AppError(404, "Personagem nao encontrado.", "CHARACTER_NOT_FOUND");
     }
 
+    const awakenLevelRequirement = getAwakenLevelRequirementForTier(character.class.tier);
     const effectiveLevel = Math.max(character.level, getLevelFromXp(character.xp));
 
-    if (effectiveLevel < AWAKEN_LEVEL_REQUIREMENT) {
+    if (!awakenLevelRequirement) {
+      throw new AppError(409, "Esta classe nao possui awaken disponivel.", "AWAKEN_NOT_AVAILABLE");
+    }
+
+    if (effectiveLevel < awakenLevelRequirement) {
       throw new AppError(
         409,
-        `Awaken exige nivel minimo ${AWAKEN_LEVEL_REQUIREMENT}.`,
+        `Awaken exige nivel minimo ${awakenLevelRequirement}.`,
         "AWAKEN_LEVEL_REQUIRED"
       );
     }
 
-    const allowedTargets = getAwakeningTargetsByClassName(character.class.name);
+    const allowedTargetClasses = await prisma.class.findMany({
+      where: {
+        evolvesFrom: character.class.name,
+      },
+      orderBy: { name: "asc" },
+    });
+    const allowedTargets = allowedTargetClasses.map((entry) => entry.name);
 
     if (!allowedTargets.length) {
       throw new AppError(409, "Esta classe nao possui awaken disponivel.", "AWAKEN_NOT_AVAILABLE");
@@ -540,7 +563,7 @@ export class CharacterService {
           name: awakenItem.name,
           type: awakenItem.type,
         },
-        stats,
+        stats: presentDerivedStats(stats),
       };
     });
   }
@@ -587,18 +610,14 @@ export class CharacterService {
   static async getCharacterSummary(userId: string, characterId: string) {
     const character = await this.getCharacterById(userId, characterId);
     const xpProgression = getXpProgression(character.xp);
-    const awakeningTargets = getAwakeningTargetsByClassName(character.class.name);
+    const awakeningTargets = await prisma.class.findMany({
+      where: {
+        evolvesFrom: character.class.name,
+      },
+      orderBy: { name: "asc" },
+    });
     const awakenItem = character.inventory?.items.find((entry) => entry.type === AWAKEN_ITEM_TYPE);
-    const targetClasses = awakeningTargets.length
-      ? await prisma.class.findMany({
-          where: {
-            name: {
-              in: awakeningTargets,
-            },
-          },
-          orderBy: { name: "asc" },
-        })
-      : [];
+    const awakenLevelRequirement = getAwakenLevelRequirementForTier(character.class.tier);
 
     return {
       id: character.id,
@@ -635,17 +654,24 @@ export class CharacterService {
         xpRemainingToNextLevel: xpProgression.xpRemainingToNextLevel,
       },
       awakening: {
-        requiredLevel: AWAKEN_LEVEL_REQUIREMENT,
+        requiredLevel: awakenLevelRequirement,
         currentClass: character.class.name,
-        isBaseClass: isBaseClass(character.class.name),
-        isAwakenedClass: isAwakenedClass(character.class.name),
-        available: character.level >= AWAKEN_LEVEL_REQUIREMENT && awakeningTargets.length > 0,
+        currentTier: character.class.tier,
+        evolvesFrom: character.class.evolvesFrom,
+        isBaseClass: isBaseClassTier(character.class.tier),
+        isAwakenedClass: isAwakenedClassTier(character.class.tier),
+        available:
+          Boolean(awakenLevelRequirement) &&
+          character.level >= (awakenLevelRequirement ?? Number.MAX_SAFE_INTEGER) &&
+          awakeningTargets.length > 0,
         hasRequiredItem: Boolean(awakenItem),
         requiredItemType: AWAKEN_ITEM_TYPE,
         requiredItemName: awakenItem?.name ?? "Emblema do Despertar",
-        targetClasses: targetClasses.map((entry) => ({
+        targetClasses: awakeningTargets.map((entry) => ({
           id: entry.id,
           name: entry.name,
+          tier: entry.tier,
+          evolvesFrom: entry.evolvesFrom,
           modifier: entry.modifier,
           description: entry.description,
           passive: entry.passive,
@@ -682,10 +708,22 @@ export class CharacterService {
         throw new AppError(404, "Classe informada nao encontrada.", "CLASS_NOT_FOUND");
       }
 
+      if (existingClass.tier !== 1 || existingClass.evolvesFrom) {
+        throw new AppError(
+          409,
+          "Somente classes base podem ser escolhidas na criacao do personagem.",
+          "INVALID_STARTER_CLASS"
+        );
+      }
+
       return existingClass;
     }
 
     const firstClass = await prisma.class.findFirst({
+      where: {
+        tier: 1,
+        evolvesFrom: null,
+      },
       orderBy: { name: "asc" },
     });
 

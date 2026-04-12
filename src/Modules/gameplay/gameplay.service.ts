@@ -1,4 +1,4 @@
-import { CharacterStatus, Prisma } from "@prisma/client";
+import { CharacterStatus, GameplayDifficulty, Prisma } from "@prisma/client";
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { getLevelFromXp } from "../characters/character.progression";
@@ -8,6 +8,7 @@ import {
   deriveCharacterStats,
   getCooldownAvailability,
   getRepeatWindowAvailability,
+  presentDerivedStats,
   resolveCombat,
 } from "./combat.engine";
 import {
@@ -30,6 +31,12 @@ interface CombatReward {
     effect?: string;
     quantity: number;
   };
+}
+
+interface MissionDefeatPenalty {
+  xpLoss: number;
+  coinsLoss: number;
+  forceDefeat: boolean;
 }
 
 type GameplayCharacterBase = Prisma.CharacterGetPayload<{
@@ -58,6 +65,15 @@ const NPC_BUFF_COSTS: Record<2 | 4 | 6, number> = {
   2: 200,
   4: 400,
   6: 600,
+};
+const MISSION_DEFEAT_RULES: Record<
+  GameplayDifficulty,
+  { xpLossPercent: number; coinsLossPercent: number; forceDefeat: boolean }
+> = {
+  EASY: { xpLossPercent: 0, coinsLossPercent: 0, forceDefeat: false },
+  MEDIUM: { xpLossPercent: 0.05, coinsLossPercent: 0.08, forceDefeat: false },
+  HARD: { xpLossPercent: 0.12, coinsLossPercent: 0.18, forceDefeat: false },
+  ELITE: { xpLossPercent: 0.2, coinsLossPercent: 0.25, forceDefeat: true },
 };
 
 export class GameplayService {
@@ -116,10 +132,15 @@ export class GameplayService {
   }
 
   static async listActiveMissions() {
-    return prisma.missionDefinition.findMany({
+    const missions = await prisma.missionDefinition.findMany({
       where: { isActive: true },
       orderBy: [{ recommendedLevel: "asc" }, { createdAt: "desc" }],
     });
+
+    return missions.map((mission) => ({
+      ...mission,
+      defeatPenalty: this.describeMissionDefeatPenalty(mission.difficulty),
+    }));
   }
 
   static async listActiveTrainings() {
@@ -196,6 +217,7 @@ export class GameplayService {
       combat,
       reward,
       undefined,
+      undefined,
       activeBuff?.buffPercent
     );
   }
@@ -266,6 +288,7 @@ export class GameplayService {
       mission.id,
       combat,
       reward,
+      mission.difficulty,
       missionAvailability.nextAvailableAt ?? undefined,
       activeBuff?.buffPercent
     );
@@ -560,12 +583,32 @@ export class GameplayService {
     referenceId: string,
     combat: ReturnType<typeof resolveCombat>,
     reward: CombatReward,
+    missionDifficulty?: GameplayDifficulty,
     nextAvailableAt?: Date,
     buffPercent?: number
   ) {
     return prisma.$transaction(async (tx) => {
+      const missionDefeatPenalty =
+        actionType === "MISSION" && !combat.victory && missionDifficulty
+          ? await this.applyMissionDefeatPenalty(tx, characterId, character, missionDifficulty)
+          : null;
+
       const progression = combat.victory
         ? await this.applyProgression(tx, characterId, character, reward.xp)
+        : missionDefeatPenalty
+          ? {
+              previousXp: character.xp,
+              currentXp: character.xp - missionDefeatPenalty.xpLoss,
+              previousLevel: character.level,
+              currentLevel: Math.max(
+                1,
+                getLevelFromXp(character.xp - missionDefeatPenalty.xpLoss)
+              ),
+              levelUps: Math.max(
+                1,
+                getLevelFromXp(character.xp - missionDefeatPenalty.xpLoss)
+              ) - character.level,
+            }
         : {
             previousXp: character.xp,
             currentXp: character.xp,
@@ -574,7 +617,7 @@ export class GameplayService {
             levelUps: 0,
           };
 
-      let inventoryCoins = character.inventory.coins;
+      let inventoryCoins = character.inventory.coins - (missionDefeatPenalty?.coinsLoss ?? 0);
 
       if (combat.victory && reward.coins > 0) {
         const updatedInventory = await tx.inventory.update({
@@ -596,7 +639,7 @@ export class GameplayService {
       const characterState = await this.persistCombatState(
         tx,
         characterId,
-        combat.characterHealthRemaining,
+        missionDefeatPenalty?.forceDefeat ? 0 : combat.characterHealthRemaining,
         progression.currentLevel,
         combat.victory,
         buffPercent
@@ -615,14 +658,19 @@ export class GameplayService {
         data: {
           characterId,
           type: `${actionType}_${combat.victory ? "WIN" : "LOSS"}`,
-          value: combat.victory ? reward.xp + reward.coins : 0,
+          value: combat.victory
+            ? reward.xp + reward.coins
+            : -((missionDefeatPenalty?.xpLoss ?? 0) + (missionDefeatPenalty?.coinsLoss ?? 0)),
         },
       });
 
       return {
         action: actionType,
         enemy: enemyName,
-        combat,
+        combat: {
+          ...combat,
+          stats: presentDerivedStats(combat.stats),
+        },
         rewards: combat.victory
           ? {
               xp: reward.xp,
@@ -630,9 +678,17 @@ export class GameplayService {
               item: reward.item,
             }
           : {
-              xp: 0,
-              coins: 0,
+              xp: -(missionDefeatPenalty?.xpLoss ?? 0),
+              coins: -(missionDefeatPenalty?.coinsLoss ?? 0),
               item: null,
+            },
+        defeatPenalty: combat.victory
+          ? null
+          : {
+              difficulty: missionDifficulty ?? null,
+              xpLoss: missionDefeatPenalty?.xpLoss ?? 0,
+              coinsLoss: missionDefeatPenalty?.coinsLoss ?? 0,
+              forceDefeat: missionDefeatPenalty?.forceDefeat ?? false,
             },
         progression,
         inventory: {
@@ -647,6 +703,71 @@ export class GameplayService {
         transaction,
       };
     });
+  }
+
+  private static async applyMissionDefeatPenalty(
+    tx: Prisma.TransactionClient,
+    characterId: string,
+    character: GameplayCharacter,
+    difficulty: GameplayDifficulty
+  ): Promise<MissionDefeatPenalty> {
+    const rules = MISSION_DEFEAT_RULES[difficulty];
+    const xpLoss = Math.min(
+      character.xp,
+      Math.max(0, Math.floor(character.xp * rules.xpLossPercent))
+    );
+    const coinsLoss = Math.min(
+      character.inventory.coins,
+      Math.max(0, Math.floor(character.inventory.coins * rules.coinsLossPercent))
+    );
+    const nextXp = Math.max(0, character.xp - xpLoss);
+    const nextLevel = Math.max(1, getLevelFromXp(nextXp));
+
+    if (xpLoss > 0) {
+      await tx.character.update({
+        where: { id: characterId },
+        data: {
+          xp: nextXp,
+          level: nextLevel,
+        },
+      });
+    }
+
+    if (coinsLoss > 0) {
+      await tx.inventory.update({
+        where: { id: character.inventory.id },
+        data: {
+          coins: {
+            decrement: coinsLoss,
+          },
+        },
+      });
+    }
+
+    return {
+      xpLoss,
+      coinsLoss,
+      forceDefeat: rules.forceDefeat,
+    };
+  }
+
+  private static describeMissionDefeatPenalty(difficulty: GameplayDifficulty) {
+    const rules = MISSION_DEFEAT_RULES[difficulty];
+
+    return {
+      difficulty,
+      xpLossPercent: Math.round(rules.xpLossPercent * 100),
+      coinsLossPercent: Math.round(rules.coinsLossPercent * 100),
+      forceDefeat: rules.forceDefeat,
+      description:
+        difficulty === "EASY"
+          ? "Ao falhar, nao perde XP nem gold."
+          : difficulty === "MEDIUM"
+            ? "Ao falhar, perde uma parte do gold e do XP."
+            : difficulty === "HARD"
+              ? "Ao falhar, perde uma quantidade alta de gold e XP."
+              : "Ao falhar, perde muitos recursos e o personagem fica derrotado.",
+    };
   }
 
   private static getCharacterVitals(character: GameplayCharacter, buffPercent?: number) {

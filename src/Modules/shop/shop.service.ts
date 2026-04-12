@@ -64,6 +64,7 @@ export class ShopService {
         type: product.type,
         img: product.img,
         effect: product.effect,
+        levelRequirement: product.levelRequirement,
         assetKind: product.assetKind,
         buyPrice: product.price,
         currency: "COINS",
@@ -81,6 +82,7 @@ export class ShopService {
           type: item.type,
           img: item.img,
           effect: item.effect,
+          levelRequirement: item.levelRequirement,
           quantity: item.quantity,
           unitSellPrice,
           totalSellPrice: unitSellPrice * item.quantity,
@@ -472,6 +474,7 @@ export class ShopService {
           type: product.type,
           img: product.img,
           effect: product.effect ?? null,
+          levelRequirement: product.levelRequirement ?? null,
           value: product.price,
         },
       });
@@ -495,6 +498,7 @@ export class ShopService {
             type: product.type,
             img: product.img,
             effect: product.effect,
+            levelRequirement: product.levelRequirement,
             quantity: product.rewardQuantity * quantity,
           },
         });

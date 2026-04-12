@@ -35,6 +35,8 @@ export const openApiDocument = {
     { name: "Rewards", description: "Resgate de recompensas" },
     { name: "Transactions", description: "Historico de transacoes" },
     { name: "Shop", description: "Loja e pagamentos" },
+    { name: "Trades", description: "Trocas assíncronas entre jogadores" },
+    { name: "PvP", description: "Duelo entre jogadores e ranking PvP" },
   ],
   components: {
     securitySchemes: {
@@ -76,6 +78,8 @@ export const openApiDocument = {
         properties: {
           id: { type: "string" },
           name: { type: "string" },
+          tier: { type: "integer" },
+          evolvesFrom: { type: "string", nullable: true },
           modifier: { type: "string" },
           description: { type: "string" },
           passive: { type: "string" },
@@ -173,6 +177,16 @@ export const openApiDocument = {
               defense: { type: "integer" },
               maxHealth: { type: "integer" },
               critChance: { type: "number" },
+              critChancePercent: { type: "number" },
+              descriptions: {
+                type: "object",
+                properties: {
+                  attack: { type: "string" },
+                  defense: { type: "string" },
+                  maxHealth: { type: "string" },
+                  critChance: { type: "string" },
+                },
+              },
             },
           },
           progression: {
@@ -235,6 +249,16 @@ export const openApiDocument = {
               defense: { type: "integer" },
               maxHealth: { type: "integer" },
               critChance: { type: "number" },
+              critChancePercent: { type: "number" },
+              descriptions: {
+                type: "object",
+                properties: {
+                  attack: { type: "string" },
+                  defense: { type: "string" },
+                  maxHealth: { type: "string" },
+                  critChance: { type: "string" },
+                },
+              },
             },
           },
           rounds: {
@@ -271,6 +295,7 @@ export const openApiDocument = {
                   type: { type: "string" },
                   img: { type: "string" },
                   effect: { type: "string", nullable: true },
+                  levelRequirement: { type: "integer", nullable: true },
                   quantity: { type: "integer" },
                 },
               },
@@ -414,7 +439,7 @@ export const openApiDocument = {
         type: "object",
         properties: {
           xp: { type: "integer" },
-          level: { type: "integer" },
+          level: { type: "integer", maximum: 60 },
           lastCheckpoint: { type: "string" },
         },
       },
@@ -485,6 +510,50 @@ export const openApiDocument = {
           providerPaymentId: { type: "string" },
           status: { type: "string", enum: ["PAID", "FAILED", "CANCELED"] },
           failureReason: { type: "string" },
+        },
+      },
+      TradeAssetRequest: {
+        type: "object",
+        required: ["assetType", "assetId"],
+        properties: {
+          assetType: { type: "string", enum: ["ITEM", "EQUIPMENT"] },
+          assetId: { type: "string" },
+          quantity: { type: "integer" },
+        },
+      },
+      CreateTradeRequest: {
+        type: "object",
+        required: ["requesterCharacterId", "targetCharacterId"],
+        properties: {
+          requesterCharacterId: { type: "string" },
+          targetCharacterId: { type: "string" },
+          offeredCoins: { type: "integer" },
+          requestedCoins: { type: "integer" },
+          note: { type: "string" },
+          expiresInHours: { type: "integer" },
+          offeredAssets: {
+            type: "array",
+            items: { $ref: "#/components/schemas/TradeAssetRequest" },
+          },
+          requestedAssets: {
+            type: "array",
+            items: { $ref: "#/components/schemas/TradeAssetRequest" },
+          },
+        },
+      },
+      RespondTradeRequest: {
+        type: "object",
+        required: ["action"],
+        properties: {
+          action: { type: "string", enum: ["ACCEPT", "REJECT", "CANCEL"] },
+        },
+      },
+      CreatePvpMatchRequest: {
+        type: "object",
+        required: ["characterId", "opponentCharacterId"],
+        properties: {
+          characterId: { type: "string" },
+          opponentCharacterId: { type: "string" },
         },
       },
       BountyActionRequest: {
@@ -572,6 +641,7 @@ export const openApiDocument = {
           type: { type: "string" },
           img: { type: "string" },
           effect: { type: "string", nullable: true },
+          levelRequirement: { type: "integer", nullable: true },
           assetKind: { type: "string", enum: ["ITEM", "EQUIPMENT", "COINS"] },
           price: { type: "integer" },
           currency: { type: "string" },
@@ -739,6 +809,7 @@ export const openApiDocument = {
           type: { type: "string" },
           img: { type: "string" },
           effect: { type: "string" },
+          levelRequirement: { type: "integer" },
           assetKind: { type: "string", enum: ["ITEM", "EQUIPMENT", "COINS"] },
           price: { type: "integer" },
           currency: { type: "string" },
@@ -757,6 +828,7 @@ export const openApiDocument = {
           type: { type: "string" },
           img: { type: "string" },
           effect: { type: "string" },
+          levelRequirement: { type: "integer" },
           assetKind: { type: "string", enum: ["ITEM", "EQUIPMENT", "COINS"] },
           price: { type: "integer" },
           currency: { type: "string" },
@@ -1082,5 +1154,87 @@ export const openApiDocument = {
       post: { tags: ["Shop"], summary: "Criar pedido de pagamento", security: authSecurity, requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentOrderRequest" } } } }, responses: { "201": { description: "Pedido criado" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } },
     },
     "/api/v1/shop/webhooks/payments": { post: { tags: ["Shop"], summary: "Processar webhook de pagamento", requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PaymentWebhookRequest" } } } }, responses: { "200": { description: "Webhook processado" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } } },
+    "/api/v1/trades/characters/{characterId}": {
+      get: {
+        tags: ["Trades"],
+        summary: "Listar trocas do personagem",
+        security: authSecurity,
+        parameters: [characterIdPathParam],
+        responses: {
+          "200": { description: "Trocas retornadas" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/trades/requests": {
+      post: {
+        tags: ["Trades"],
+        summary: "Criar solicitacao de troca",
+        security: authSecurity,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateTradeRequest" } } } },
+        responses: {
+          "201": { description: "Troca criada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
+    "/api/v1/trades/{tradeId}/respond": {
+      post: {
+        tags: ["Trades"],
+        summary: "Responder solicitacao de troca",
+        security: authSecurity,
+        parameters: [{ name: "tradeId", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RespondTradeRequest" } } } },
+        responses: {
+          "200": { description: "Troca atualizada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
+    "/api/v1/pvp/rankings": {
+      get: {
+        tags: ["PvP"],
+        summary: "Obter ranking PvP",
+        security: authSecurity,
+        responses: {
+          "200": { description: "Ranking PvP retornado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+        },
+      },
+    },
+    "/api/v1/pvp/characters/{characterId}/overview": {
+      get: {
+        tags: ["PvP"],
+        summary: "Obter overview PvP do personagem",
+        security: authSecurity,
+        parameters: [characterIdPathParam],
+        responses: {
+          "200": { description: "Overview PvP retornado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/pvp/matches": {
+      post: {
+        tags: ["PvP"],
+        summary: "Executar duelo PvP",
+        security: authSecurity,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreatePvpMatchRequest" } } } },
+        responses: {
+          "201": { description: "Duelo PvP concluido" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
   },
 } as const;

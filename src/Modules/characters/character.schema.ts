@@ -14,6 +14,7 @@ import {
   UpdateCharacterProfileInput,
   UpdateCharacterProgressInput,
 } from "./character.types";
+import { MAX_CHARACTER_LEVEL } from "./character.progression";
 
 const allowedAvatarIds = new Set(["blade", "crown", "phoenix", "moon"]);
 const allowedTitleIds = new Set(["wanderer", "hunter", "warden", "arcanist"]);
@@ -46,7 +47,7 @@ export const validateUpdateCharacterProgress = (req: Request): void => {
   const body = getBody(req);
   const parsed: UpdateCharacterProgressInput = {
     xp: optionalNumber(body.xp, "xp", { min: 0, max: 1_000_000_000 }),
-    level: optionalNumber(body.level, "level", { min: 1, max: 10_000 }),
+    level: optionalNumber(body.level, "level", { min: 1, max: MAX_CHARACTER_LEVEL }),
     lastCheckpoint: optionalString(body.lastCheckpoint, "lastCheckpoint", 1, 120),
   };
 
