@@ -34,6 +34,36 @@ export const listNpcs = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(res, 200, { npcs });
 });
 
+export const listMissionSessions = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.characterId, "characterId");
+  const sessions = await GameplayService.listMissionSessions(userId, characterId);
+  sendSuccess(res, 200, { sessions });
+});
+
+export const getMissionSession = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.characterId, "characterId");
+  const sessionId = requireString(req.params.sessionId, "sessionId");
+  const session = await GameplayService.getMissionSession(userId, characterId, sessionId);
+  sendSuccess(res, 200, { session });
+});
+
+export const startMissionJourney = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.characterId, "characterId");
+  const result = await GameplayService.startMissionJourney(userId, characterId, req.body);
+  sendSuccess(res, 200, { result }, "Jornada da missao iniciada com sucesso.");
+});
+
+export const progressMissionJourney = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.characterId, "characterId");
+  const sessionId = requireString(req.params.sessionId, "sessionId");
+  const result = await GameplayService.progressMissionJourney(userId, characterId, sessionId, req.body);
+  sendSuccess(res, 200, { result }, "Etapa da missao atualizada com sucesso.");
+});
+
 export const executeBountyHunt = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const characterId = requireString(req.params.characterId, "characterId");
@@ -67,4 +97,12 @@ export const executeMarketAction = asyncHandler(async (req: Request, res: Respon
   const characterId = requireString(req.params.characterId, "characterId");
   const result = await GameplayService.executeMarketAction(userId, characterId, req.body);
   sendSuccess(res, 200, { result }, "Acao de mercado concluida com sucesso.");
+});
+
+export const executeCombatTurn = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.characterId, "characterId");
+  const combatSessionId = requireString(req.params.combatSessionId, "combatSessionId");
+  const result = await GameplayService.executeCombatTurn(userId, characterId, combatSessionId, req.body);
+  sendSuccess(res, 200, { result }, "Turno de combate processado com sucesso.");
 });

@@ -1,4 +1,5 @@
 import prisma from "../../config/db";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../../errors/AppError";
 import {
   CreateBountyInput,
@@ -115,16 +116,57 @@ export class AdminService {
 
   static async listMissions() {
     return prisma.missionDefinition.findMany({
+      include: {
+        startNpc: true,
+        completionNpc: true,
+      },
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
     });
   }
 
   static async createMission(input: CreateMissionInput) {
+    if (input.startNpcId) {
+      await this.ensureNpc(input.startNpcId);
+    }
+
+    if (input.completionNpcId) {
+      await this.ensureNpc(input.completionNpcId);
+    }
+
     return prisma.missionDefinition.create({
       data: {
-        ...input,
+        title: input.title,
+        description: input.description,
+        difficulty: input.difficulty,
+        recommendedLevel: input.recommendedLevel,
+        imageUrl: input.imageUrl,
+        startDialogue: input.startDialogue,
+        completionDialogue: input.completionDialogue,
+        repeatCooldownSeconds: input.repeatCooldownSeconds ?? 1800,
+        journey: input.journey as Prisma.InputJsonValue | undefined,
+        enemyName: input.enemyName,
+        enemyLevel: input.enemyLevel,
+        enemyHealth: input.enemyHealth,
+        enemyAttack: input.enemyAttack,
+        enemyDefense: input.enemyDefense,
+        rewardXp: input.rewardXp,
+        rewardCoins: input.rewardCoins,
+        rewardItemName: input.rewardItemName,
+        rewardItemCategory: input.rewardItemCategory,
+        rewardItemType: input.rewardItemType,
+        rewardItemImg: input.rewardItemImg,
+        rewardItemEffect: input.rewardItemEffect,
+        rewardItemValue: input.rewardItemValue,
         isActive: input.isActive ?? true,
         rewardItemQuantity: input.rewardItemQuantity ?? 1,
+        ...(input.startNpcId ? { startNpc: { connect: { id: input.startNpcId } } } : {}),
+        ...(input.completionNpcId
+          ? { completionNpc: { connect: { id: input.completionNpcId } } }
+          : {}),
+      },
+      include: {
+        startNpc: true,
+        completionNpc: true,
       },
     });
   }
@@ -132,14 +174,73 @@ export class AdminService {
   static async updateMission(missionId: string, input: UpdateMissionInput) {
     await this.ensureMission(missionId);
 
+    if (input.startNpcId) {
+      await this.ensureNpc(input.startNpcId);
+    }
+
+    if (input.completionNpcId) {
+      await this.ensureNpc(input.completionNpcId);
+    }
+
     return prisma.missionDefinition.update({
       where: { id: missionId },
-      data: input,
+      data: {
+        title: input.title,
+        description: input.description,
+        difficulty: input.difficulty,
+        recommendedLevel: input.recommendedLevel,
+        imageUrl: input.imageUrl,
+        startDialogue: input.startDialogue,
+        completionDialogue: input.completionDialogue,
+        repeatCooldownSeconds: input.repeatCooldownSeconds,
+        journey: input.journey as Prisma.InputJsonValue | undefined,
+        enemyName: input.enemyName,
+        enemyLevel: input.enemyLevel,
+        enemyHealth: input.enemyHealth,
+        enemyAttack: input.enemyAttack,
+        enemyDefense: input.enemyDefense,
+        rewardXp: input.rewardXp,
+        rewardCoins: input.rewardCoins,
+        rewardItemName: input.rewardItemName,
+        rewardItemCategory: input.rewardItemCategory,
+        rewardItemType: input.rewardItemType,
+        rewardItemImg: input.rewardItemImg,
+        rewardItemEffect: input.rewardItemEffect,
+        rewardItemValue: input.rewardItemValue,
+        rewardItemQuantity: input.rewardItemQuantity,
+        isActive: input.isActive,
+        ...(input.startNpcId !== undefined
+          ? input.startNpcId
+            ? { startNpc: { connect: { id: input.startNpcId } } }
+            : { startNpc: { disconnect: true } }
+          : {}),
+        ...(input.completionNpcId !== undefined
+          ? input.completionNpcId
+            ? { completionNpc: { connect: { id: input.completionNpcId } } }
+            : { completionNpc: { disconnect: true } }
+          : {}),
+      },
+      include: {
+        startNpc: true,
+        completionNpc: true,
+      },
     });
   }
 
   static async deleteMission(missionId: string) {
     await this.ensureMission(missionId);
+
+    const linkedSessions = await prisma.characterMissionSession.count({
+      where: { missionId },
+    });
+
+    if (linkedSessions > 0) {
+      throw new AppError(
+        409,
+        "Nao e possivel excluir missao com sessoes vinculadas. Desative-a em vez de excluir.",
+        "MISSION_IN_USE"
+      );
+    }
 
     await prisma.missionDefinition.delete({
       where: { id: missionId },
@@ -186,6 +287,16 @@ export class AdminService {
 
   static async listNpcs() {
     return prisma.npcDefinition.findMany({
+      include: {
+        startingMissions: {
+          select: { id: true, title: true, isActive: true },
+          orderBy: { createdAt: "desc" },
+        },
+        completionMissions: {
+          select: { id: true, title: true, isActive: true },
+          orderBy: { createdAt: "desc" },
+        },
+      },
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
     });
   }
@@ -213,6 +324,20 @@ export class AdminService {
 
   static async deleteNpc(npcId: string) {
     await this.ensureNpc(npcId);
+
+    const linkedMissions = await prisma.missionDefinition.count({
+      where: {
+        OR: [{ startNpcId: npcId }, { completionNpcId: npcId }],
+      },
+    });
+
+    if (linkedMissions > 0) {
+      throw new AppError(
+        409,
+        "Nao e possivel excluir NPC vinculado a missoes. Remova o vinculo antes.",
+        "NPC_IN_USE"
+      );
+    }
 
     await prisma.npcDefinition.delete({
       where: { id: npcId },

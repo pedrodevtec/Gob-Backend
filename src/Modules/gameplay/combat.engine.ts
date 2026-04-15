@@ -23,6 +23,8 @@ export interface CombatRound {
   round: number;
   actor: "character" | "monster";
   damage: number;
+  action?: "ATTACK" | "DEFEND" | "POWER_ATTACK";
+  critical?: boolean;
   remainingEnemyHealth?: number;
   remainingCharacterHealth?: number;
 }
@@ -33,6 +35,12 @@ export interface CombatResult {
   enemyHealthRemaining: number;
   stats: DerivedStats;
   rounds: CombatRound[];
+}
+
+export interface TurnBasedCombatActionConfig {
+  attackMultiplier: number;
+  defenseMultiplier: number;
+  critEnabled: boolean;
 }
 
 export interface PvpCombatRound {
@@ -76,6 +84,64 @@ export interface CombatCharacterStateInput extends CharacterStateInput {
 }
 
 const DEFAULT_CRIT_CHANCE = 0.08;
+
+export const getCombatActionConfig = (
+  action: "ATTACK" | "DEFEND" | "POWER_ATTACK"
+): TurnBasedCombatActionConfig => {
+  if (action === "DEFEND") {
+    return {
+      attackMultiplier: 0.65,
+      defenseMultiplier: 1.6,
+      critEnabled: false,
+    };
+  }
+
+  if (action === "POWER_ATTACK") {
+    return {
+      attackMultiplier: 1.35,
+      defenseMultiplier: 0.8,
+      critEnabled: true,
+    };
+  }
+
+  return {
+    attackMultiplier: 1,
+    defenseMultiplier: 1,
+    critEnabled: true,
+  };
+};
+
+export const calculateCharacterTurnDamage = (
+  stats: DerivedStats,
+  enemyDefense: number,
+  action: "ATTACK" | "DEFEND" | "POWER_ATTACK",
+  randomFn: () => number = Math.random
+) => {
+  const actionConfig = getCombatActionConfig(action);
+  const critical = actionConfig.critEnabled && randomFn() <= stats.critChance;
+  const critBonus = critical ? 1.5 : 1;
+
+  const damage = Math.max(
+    1,
+    Math.round(
+      ((stats.attack * actionConfig.attackMultiplier) - enemyDefense + 6 + randomFn() * 4) * critBonus
+    )
+  );
+
+  return { damage, critical, actionConfig };
+};
+
+export const calculateMonsterTurnDamage = (
+  monsterAttack: number,
+  stats: DerivedStats,
+  action: "ATTACK" | "DEFEND" | "POWER_ATTACK",
+  randomFn: () => number = Math.random
+) => {
+  const actionConfig = getCombatActionConfig(action);
+  const effectiveDefense = Math.max(0, Math.round(stats.defense * actionConfig.defenseMultiplier));
+
+  return Math.max(1, Math.round(monsterAttack - effectiveDefense + 4 + randomFn() * 4));
+};
 
 export const extractEffectModifiers = (effect: string) => {
   const modifiers = {
@@ -222,6 +288,8 @@ export const resolveCombat = (
       round: index + 1,
       actor: "character",
       damage: characterDamage,
+      action: "ATTACK",
+      critical: critBonus > 1,
       remainingEnemyHealth: monsterHealth,
     });
 
@@ -239,6 +307,8 @@ export const resolveCombat = (
       round: index + 1,
       actor: "monster",
       damage: monsterDamage,
+      action: "ATTACK",
+      critical: false,
       remainingCharacterHealth: characterHealth,
     });
 

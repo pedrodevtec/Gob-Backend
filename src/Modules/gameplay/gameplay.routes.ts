@@ -2,23 +2,31 @@ import { Router } from "express";
 import auth from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
 import {
+  executeCombatTurn,
   executeBountyHunt,
   executeMarketAction,
   executeMission,
   executeNpcInteraction,
   executeTraining,
+  getMissionSession,
   getJourneyOptions,
   listBounties,
+  listMissionSessions,
   listMissions,
   listMonsters,
   listNpcs,
+  progressMissionJourney,
+  startMissionJourney,
   listTrainings,
 } from "./gameplay.controller";
 import {
   validateBountyHunt,
+  validateCombatTurn,
   validateMarketAction,
   validateMission,
   validateNpcInteraction,
+  validateProgressMissionJourney,
+  validateStartMissionJourney,
   validateTraining,
 } from "./gameplay.schema";
 
@@ -32,6 +40,19 @@ router.get("/trainings", listTrainings);
 router.get("/npcs", listNpcs);
 
 router.use(auth);
+
+router.get("/characters/:characterId/missions/sessions", listMissionSessions);
+router.get("/characters/:characterId/missions/sessions/:sessionId", getMissionSession);
+router.post(
+  "/characters/:characterId/missions/start",
+  validate(validateStartMissionJourney),
+  startMissionJourney
+);
+router.post(
+  "/characters/:characterId/missions/sessions/:sessionId/progress",
+  validate(validateProgressMissionJourney),
+  progressMissionJourney
+);
 
 router.post(
   "/characters/:characterId/actions/bounty-hunt",
@@ -57,6 +78,11 @@ router.post(
   "/characters/:characterId/actions/market",
   validate(validateMarketAction),
   executeMarketAction
+);
+router.post(
+  "/characters/:characterId/combat-sessions/:combatSessionId/actions",
+  validate(validateCombatTurn),
+  executeCombatTurn
 );
 
 export default router;

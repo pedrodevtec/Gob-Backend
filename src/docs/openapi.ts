@@ -12,6 +12,20 @@ const characterIdPathParam = {
   schema: { type: "string" },
 } as const;
 
+const sessionIdPathParam = {
+  name: "sessionId",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
+const combatSessionIdPathParam = {
+  name: "combatSessionId",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
 const authSecurity = [{ bearerAuth: [] }] as const;
 
 export const openApiDocument = {
@@ -323,11 +337,148 @@ export const openApiDocument = {
           availability: { $ref: "#/components/schemas/GameplayAvailability" },
         },
       },
+      MissionJourneyChoice: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          label: { type: "string" },
+          description: { type: "string", nullable: true },
+          nextNodeId: { type: "string" },
+        },
+      },
+      MissionJourneyEnemy: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          imageUrl: { type: "string", nullable: true },
+          level: { type: "integer" },
+          health: { type: "integer" },
+          attack: { type: "integer" },
+          defense: { type: "integer" },
+        },
+      },
+      MissionJourneyNode: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          type: {
+            type: "string",
+            enum: ["DIALOGUE", "CHOICE", "COMBAT", "RETURN_TO_NPC", "COMPLETE"],
+          },
+          title: { type: "string", nullable: true },
+          text: { type: "string", nullable: true },
+          nextNodeId: { type: "string", nullable: true },
+          npcId: { type: "string", nullable: true },
+          enemy: {
+            allOf: [{ $ref: "#/components/schemas/MissionJourneyEnemy" }],
+            nullable: true,
+          },
+          choices: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MissionJourneyChoice" },
+          },
+        },
+      },
+      MissionJourney: {
+        type: "object",
+        properties: {
+          startNodeId: { type: "string" },
+          nodes: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MissionJourneyNode" },
+          },
+        },
+      },
+      CombatSession: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          missionSessionId: { type: "string", nullable: true },
+          sourceType: { type: "string", enum: ["BOUNTY_HUNT", "MISSION"] },
+          sourceId: { type: "string" },
+          status: { type: "string", enum: ["IN_PROGRESS", "VICTORY", "DEFEAT", "ESCAPED"] },
+          turnNumber: { type: "integer" },
+          availableAt: { type: "string", format: "date-time", nullable: true },
+          enemy: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              imageUrl: { type: "string", nullable: true },
+              level: { type: "integer" },
+              attack: { type: "integer" },
+              defense: { type: "integer" },
+              currentHealth: { type: "integer" },
+              maxHealth: { type: "integer" },
+            },
+          },
+          character: {
+            type: "object",
+            properties: {
+              currentHealth: { type: "integer" },
+              maxHealth: { type: "integer" },
+              stats: {
+                type: "object",
+                properties: {
+                  attack: { type: "integer" },
+                  defense: { type: "integer" },
+                  maxHealth: { type: "integer" },
+                  critChance: { type: "number" },
+                  critChancePercent: { type: "number" },
+                },
+              },
+            },
+          },
+          actions: {
+            type: "array",
+            items: { type: "string", enum: ["ATTACK", "DEFEND", "POWER_ATTACK"] },
+          },
+          battleLog: {
+            type: "array",
+            items: { type: "object" },
+          },
+        },
+      },
+      MissionSession: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["IN_PROGRESS", "READY_TO_TURN_IN", "COMPLETED", "FAILED", "ABANDONED"],
+          },
+          startedAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          completedAt: { type: "string", format: "date-time", nullable: true },
+          nextAvailableAt: { type: "string", format: "date-time", nullable: true },
+          mission: { $ref: "#/components/schemas/MissionDefinition" },
+          currentNode: { $ref: "#/components/schemas/MissionJourneyNode" },
+          journeySummary: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MissionJourneyNode" },
+          },
+          combatSession: {
+            allOf: [{ $ref: "#/components/schemas/CombatSession" }],
+            nullable: true,
+          },
+          completion: {
+            type: "object",
+            nullable: true,
+            properties: {
+              rewards: { type: "object" },
+              progression: { type: "object" },
+              inventory: { type: "object" },
+              transaction: { type: "object" },
+            },
+          },
+        },
+      },
       Monster: {
         type: "object",
         properties: {
           id: { type: "string" },
           name: { type: "string" },
+          description: { type: "string", nullable: true },
+          imageUrl: { type: "string", nullable: true },
           level: { type: "integer" },
           health: { type: "integer" },
           attack: { type: "integer" },
@@ -356,12 +507,48 @@ export const openApiDocument = {
         properties: {
           id: { type: "string" },
           title: { type: "string" },
+          description: { type: "string", nullable: true },
           difficulty: { type: "string", enum: ["EASY", "MEDIUM", "HARD", "ELITE"] },
           recommendedLevel: { type: "integer" },
+          imageUrl: { type: "string", nullable: true },
+          startNpcId: { type: "string", nullable: true },
+          completionNpcId: { type: "string", nullable: true },
+          startDialogue: { type: "string", nullable: true },
+          completionDialogue: { type: "string", nullable: true },
+          repeatCooldownSeconds: { type: "integer" },
+          journey: {
+            allOf: [{ $ref: "#/components/schemas/MissionJourney" }],
+            nullable: true,
+          },
           enemyName: { type: "string" },
           enemyLevel: { type: "integer" },
+          enemyHealth: { type: "integer" },
+          enemyAttack: { type: "integer" },
+          enemyDefense: { type: "integer" },
           rewardXp: { type: "integer" },
           rewardCoins: { type: "integer" },
+          startNpc: {
+            type: "object",
+            nullable: true,
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              imageUrl: { type: "string", nullable: true },
+            },
+          },
+          completionNpc: {
+            type: "object",
+            nullable: true,
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              imageUrl: { type: "string", nullable: true },
+            },
+          },
+          journeySummary: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MissionJourneyNode" },
+          },
           isActive: { type: "boolean" },
         },
       },
@@ -384,9 +571,33 @@ export const openApiDocument = {
           name: { type: "string" },
           role: { type: "string" },
           interactionType: { type: "string" },
-          dialogue: { type: "string" },
+          imageUrl: { type: "string", nullable: true },
+          description: { type: "string", nullable: true },
+          dialogue: { type: "string", nullable: true },
           xpReward: { type: "integer" },
           coinsReward: { type: "integer" },
+          startingMissions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                title: { type: "string" },
+                isActive: { type: "boolean" },
+              },
+            },
+          },
+          completionMissions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                title: { type: "string" },
+                isActive: { type: "boolean" },
+              },
+            },
+          },
           isActive: { type: "boolean" },
         },
       },
@@ -567,6 +778,21 @@ export const openApiDocument = {
         required: ["missionId"],
         properties: { missionId: { type: "string" } },
       },
+      StartMissionJourneyRequest: {
+        type: "object",
+        required: ["missionId", "npcId"],
+        properties: {
+          missionId: { type: "string" },
+          npcId: { type: "string" },
+        },
+      },
+      ProgressMissionJourneyRequest: {
+        type: "object",
+        properties: {
+          choiceId: { type: "string" },
+          npcId: { type: "string" },
+        },
+      },
       TrainingActionRequest: {
         type: "object",
         required: ["trainingId"],
@@ -587,11 +813,20 @@ export const openApiDocument = {
           action: { type: "string", enum: ["barter", "scavenge"] },
         },
       },
+      CombatTurnRequest: {
+        type: "object",
+        required: ["action"],
+        properties: {
+          action: { type: "string", enum: ["ATTACK", "DEFEND", "POWER_ATTACK"] },
+        },
+      },
       AdminMonsterRequest: {
         type: "object",
         required: ["name", "level", "health", "attack", "defense", "experience"],
         properties: {
           name: { type: "string" },
+          description: { type: "string" },
+          imageUrl: { type: "string" },
           level: { type: "integer" },
           health: { type: "integer" },
           attack: { type: "integer" },
@@ -692,6 +927,13 @@ export const openApiDocument = {
           description: { type: "string" },
           difficulty: { type: "string", enum: ["EASY", "MEDIUM", "HARD", "ELITE"] },
           recommendedLevel: { type: "integer" },
+          imageUrl: { type: "string" },
+          startNpcId: { type: "string", nullable: true },
+          completionNpcId: { type: "string", nullable: true },
+          startDialogue: { type: "string" },
+          completionDialogue: { type: "string" },
+          repeatCooldownSeconds: { type: "integer" },
+          journey: { $ref: "#/components/schemas/AdminMissionJourneyRequest" },
           enemyName: { type: "string" },
           enemyLevel: { type: "integer" },
           enemyHealth: { type: "integer" },
@@ -716,6 +958,13 @@ export const openApiDocument = {
           description: { type: "string" },
           difficulty: { type: "string", enum: ["EASY", "MEDIUM", "HARD", "ELITE"] },
           recommendedLevel: { type: "integer" },
+          imageUrl: { type: "string" },
+          startNpcId: { type: "string" },
+          completionNpcId: { type: "string" },
+          startDialogue: { type: "string" },
+          completionDialogue: { type: "string" },
+          repeatCooldownSeconds: { type: "integer" },
+          journey: { $ref: "#/components/schemas/AdminMissionJourneyRequest" },
           enemyName: { type: "string" },
           enemyLevel: { type: "integer" },
           enemyHealth: { type: "integer" },
@@ -765,6 +1014,7 @@ export const openApiDocument = {
           name: { type: "string" },
           role: { type: "string" },
           interactionType: { type: "string" },
+          imageUrl: { type: "string" },
           description: { type: "string" },
           dialogue: { type: "string" },
           xpReward: { type: "integer" },
@@ -779,12 +1029,23 @@ export const openApiDocument = {
           isActive: { type: "boolean" },
         },
       },
+      AdminMissionJourneyRequest: {
+        type: "object",
+        properties: {
+          startNodeId: { type: "string" },
+          nodes: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MissionJourneyNode" },
+          },
+        },
+      },
       AdminNpcUpdateRequest: {
         type: "object",
         properties: {
           name: { type: "string" },
           role: { type: "string" },
           interactionType: { type: "string" },
+          imageUrl: { type: "string" },
           description: { type: "string" },
           dialogue: { type: "string" },
           xpReward: { type: "integer" },
@@ -997,14 +1258,55 @@ export const openApiDocument = {
     "/api/v1/gameplay/journey": { get: { tags: ["Gameplay"], summary: "Obter jornada e opcoes", responses: { "200": { description: "Jornada retornada" } } } },
     "/api/v1/gameplay/monsters": { get: { tags: ["Gameplay"], summary: "Listar monstros", responses: { "200": { description: "Monstros retornados" } } } },
     "/api/v1/gameplay/bounties": { get: { tags: ["Gameplay"], summary: "Listar bounties ativas", description: "Cada bounty so pode ser concluida uma vez por personagem enquanto estiver ativa.", responses: { "200": { description: "Bounties retornadas" } } } },
-    "/api/v1/gameplay/missions": { get: { tags: ["Gameplay"], summary: "Listar missoes ativas", description: "Missoes possuem janela de repeticao. O frontend deve respeitar nextAvailableAt retornado na execucao.", responses: { "200": { description: "Missoes retornadas" } } } },
+    "/api/v1/gameplay/missions": { get: { tags: ["Gameplay"], summary: "Listar missoes ativas", description: "Missoes agora podem ter NPC de origem, NPC de entrega, imagem e jornada ramificada com escolhas e combate manual.", responses: { "200": { description: "Missoes retornadas" } } } },
     "/api/v1/gameplay/trainings": { get: { tags: ["Gameplay"], summary: "Listar treinamentos ativos", description: "Treinamentos expõem cooldownSeconds e entram em cooldown por personagem apos execucao.", responses: { "200": { description: "Treinamentos retornados" } } } },
-    "/api/v1/gameplay/npcs": { get: { tags: ["Gameplay"], summary: "Listar NPCs ativos", description: "NPCs possuem cooldown por personagem. NPC healer restaura o HP total.", responses: { "200": { description: "NPCs retornados" } } } },
+    "/api/v1/gameplay/npcs": { get: { tags: ["Gameplay"], summary: "Listar NPCs ativos", description: "NPCs possuem cooldown por personagem, imagem e lista das missoes que podem iniciar.", responses: { "200": { description: "NPCs retornados" } } } },
+    "/api/v1/gameplay/characters/{characterId}/missions/sessions": {
+      get: {
+        tags: ["Gameplay"],
+        summary: "Listar sessoes de missao do personagem",
+        description: "Retorna as jornadas em andamento ou prontas para entrega, incluindo no atual e combate vinculado quando existir.",
+        security: authSecurity,
+        parameters: [characterIdPathParam],
+        responses: { "200": { description: "Sessoes retornadas" }, "401": { $ref: "#/components/responses/Unauthorized" } },
+      },
+    },
+    "/api/v1/gameplay/characters/{characterId}/missions/sessions/{sessionId}": {
+      get: {
+        tags: ["Gameplay"],
+        summary: "Obter sessao de missao",
+        security: authSecurity,
+        parameters: [characterIdPathParam, sessionIdPathParam],
+        responses: { "200": { description: "Sessao retornada" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/api/v1/gameplay/characters/{characterId}/missions/start": {
+      post: {
+        tags: ["Gameplay"],
+        summary: "Iniciar jornada de missao por NPC",
+        description: "Inicia uma missao vinculada ao NPC de origem configurado no administrador.",
+        security: authSecurity,
+        parameters: [characterIdPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/StartMissionJourneyRequest" } } } },
+        responses: { "200": { description: "Jornada iniciada" }, "409": { $ref: "#/components/responses/Conflict" } },
+      },
+    },
+    "/api/v1/gameplay/characters/{characterId}/missions/sessions/{sessionId}/progress": {
+      post: {
+        tags: ["Gameplay"],
+        summary: "Avancar etapa da jornada",
+        description: "Usado para seguir dialogos, escolher um caminho ou entregar a missao ao NPC correto.",
+        security: authSecurity,
+        parameters: [characterIdPathParam, sessionIdPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ProgressMissionJourneyRequest" } } } },
+        responses: { "200": { description: "Jornada atualizada" }, "409": { $ref: "#/components/responses/Conflict" } },
+      },
+    },
     "/api/v1/gameplay/characters/{characterId}/actions/bounty-hunt": {
       post: {
         tags: ["Gameplay"],
         summary: "Executar bounty hunt",
-        description: "Usa o HP atual persistido do personagem. Se vencer, grava HP restante, status e recompensa. Se perder e o HP chegar a zero, o personagem fica DEFEATED ate ser curado.",
+        description: "Cria uma sessao de combate manual por turnos para a bounty. O combate e resolvido depois pelo endpoint de acoes da combat session.",
         security: authSecurity,
         parameters: [characterIdPathParam],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BountyActionRequest" } } } },
@@ -1014,8 +1316,8 @@ export const openApiDocument = {
     "/api/v1/gameplay/characters/{characterId}/actions/missions": {
       post: {
         tags: ["Gameplay"],
-        summary: "Executar missao",
-        description: "Usa HP persistido e retorna availability.nextAvailableAt para a proxima repeticao permitida da mesma missao.",
+        summary: "Executar missao sem NPC de origem",
+        description: "Cria uma sessao de jornada para missoes que nao exigem NPC de origem.",
         security: authSecurity,
         parameters: [characterIdPathParam],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/MissionActionRequest" } } } },
@@ -1053,6 +1355,17 @@ export const openApiDocument = {
         parameters: [characterIdPathParam],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/MarketActionRequest" } } } },
         responses: { "200": { description: "Acao de mercado executada" }, "409": { $ref: "#/components/responses/Conflict" } },
+      },
+    },
+    "/api/v1/gameplay/characters/{characterId}/combat-sessions/{combatSessionId}/actions": {
+      post: {
+        tags: ["Gameplay"],
+        summary: "Executar turno de combate manual",
+        description: "Recebe a acao do jogador para a sessao ativa. O backend aplica o turno do player, resolve a resposta inimiga e fecha a sessao em vitoria ou derrota quando aplicavel.",
+        security: authSecurity,
+        parameters: [characterIdPathParam, combatSessionIdPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CombatTurnRequest" } } } },
+        responses: { "200": { description: "Turno processado" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } },
       },
     },
     "/api/v1/admin/monsters": {

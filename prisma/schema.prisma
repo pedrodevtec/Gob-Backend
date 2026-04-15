@@ -34,6 +34,26 @@ enum GameplayDifficulty {
   ELITE
 }
 
+enum MissionSessionStatus {
+  IN_PROGRESS
+  READY_TO_TURN_IN
+  COMPLETED
+  FAILED
+  ABANDONED
+}
+
+enum CombatSessionStatus {
+  IN_PROGRESS
+  VICTORY
+  DEFEAT
+  ESCAPED
+}
+
+enum CombatSourceType {
+  BOUNTY_HUNT
+  MISSION
+}
+
 enum CharacterStatus {
   READY
   WOUNDED
@@ -101,6 +121,8 @@ model Character {
   actionLogs    CharacterActionLog[]
   paymentOrders PaymentOrder[]
   rewardClaims  RewardClaim[]
+  missionSessions CharacterMissionSession[]
+  combatSessions  CombatSession[]
   sentTrades    Trade[]        @relation("TradeRequesterCharacter")
   receivedTrades Trade[]       @relation("TradeTargetCharacter")
   pvpMatchesAsChallenger PvpMatch[] @relation("PvpMatchChallenger")
@@ -190,6 +212,8 @@ model BountyHunt {
 model Monster {
   id         String  @id @default(uuid())
   name       String  @unique
+  description String?
+  imageUrl   String?
   level      Int
   health     Int
   attack     Int
@@ -207,6 +231,13 @@ model MissionDefinition {
   description        String?
   difficulty         GameplayDifficulty @default(EASY)
   recommendedLevel   Int                @default(1)
+  imageUrl           String?
+  startNpcId         String?
+  completionNpcId    String?
+  startDialogue      String?
+  completionDialogue String?
+  repeatCooldownSeconds Int             @default(1800)
+  journey            Json?
   enemyName          String
   enemyLevel         Int
   enemyHealth        Int
@@ -224,6 +255,10 @@ model MissionDefinition {
   isActive           Boolean            @default(true)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+
+  startNpc       NpcDefinition?            @relation("MissionStartNpc", fields: [startNpcId], references: [id])
+  completionNpc  NpcDefinition?            @relation("MissionCompletionNpc", fields: [completionNpcId], references: [id])
+  sessions       CharacterMissionSession[]
 }
 
 model TrainingDefinition {
@@ -244,6 +279,7 @@ model NpcDefinition {
   name               String
   role               String
   interactionType    String
+  imageUrl           String?
   description        String?
   dialogue           String?
   xpReward           Int      @default(0)
@@ -258,6 +294,9 @@ model NpcDefinition {
   isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  startingMissions   MissionDefinition[] @relation("MissionStartNpc")
+  completionMissions MissionDefinition[] @relation("MissionCompletionNpc")
 }
 
 model Transaction {
@@ -342,6 +381,59 @@ model RewardClaim {
   claimedAt   DateTime @default(now())
 
   character Character @relation(fields: [characterId], references: [id])
+}
+
+model CharacterMissionSession {
+  id            String               @id @default(uuid())
+  characterId   String
+  missionId     String
+  status        MissionSessionStatus @default(IN_PROGRESS)
+  currentNodeId String
+  selectedPath  String?
+  metadata      Json?
+  startedAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  completedAt   DateTime?
+
+  character Character         @relation(fields: [characterId], references: [id])
+  mission   MissionDefinition @relation(fields: [missionId], references: [id])
+  combats   CombatSession[]
+
+  @@index([characterId, missionId, status])
+  @@index([characterId, updatedAt])
+}
+
+model CombatSession {
+  id                   String              @id @default(uuid())
+  characterId          String
+  missionSessionId     String?
+  sourceType           CombatSourceType
+  sourceId             String
+  status               CombatSessionStatus @default(IN_PROGRESS)
+  enemyName            String
+  enemyImageUrl        String?
+  enemyLevel           Int
+  enemyAttack          Int
+  enemyDefense         Int
+  enemyCurrentHealth   Int
+  enemyMaxHealth       Int
+  characterCurrentHealth Int
+  characterMaxHealth   Int
+  turnNumber           Int                 @default(1)
+  availableAt          DateTime?
+  rewards              Json?
+  defeatPenalty        Json?
+  battleLog            Json?
+  metadata             Json?
+  startedAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  completedAt          DateTime?
+
+  character      Character               @relation(fields: [characterId], references: [id])
+  missionSession CharacterMissionSession? @relation(fields: [missionSessionId], references: [id])
+
+  @@index([characterId, status, updatedAt])
+  @@index([missionSessionId, status])
 }
 
 model Trade {

@@ -5,6 +5,8 @@ const isObject = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 };
 
+export const isPlainObject = isObject;
+
 export const getBody = (req: Request): Record<string, unknown> => {
   if (!isObject(req.body)) {
     throw new AppError(400, "Body da requisicao invalido.", "INVALID_BODY");
@@ -107,6 +109,41 @@ export const optionalNumber = (
   }
 
   return value;
+};
+
+export const requireObject = (value: unknown, fieldName: string): Record<string, unknown> => {
+  if (!isObject(value)) {
+    throw new AppError(400, `Campo ${fieldName} deve ser um objeto.`, "VALIDATION_ERROR");
+  }
+
+  return value;
+};
+
+export const optionalObject = (
+  value: unknown,
+  fieldName: string
+): Record<string, unknown> | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return requireObject(value, fieldName);
+};
+
+export const requireArray = (value: unknown, fieldName: string): unknown[] => {
+  if (!Array.isArray(value)) {
+    throw new AppError(400, `Campo ${fieldName} deve ser uma lista.`, "VALIDATION_ERROR");
+  }
+
+  return value;
+};
+
+export const optionalArray = (value: unknown, fieldName: string): unknown[] | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return requireArray(value, fieldName);
 };
 
 export const requireUserId = (req: Request): string => {

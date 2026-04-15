@@ -2,8 +2,12 @@ import { Request } from "express";
 import { AppError } from "../../errors/AppError";
 import {
   getBody,
+  optionalArray,
   optionalNumber,
+  optionalObject,
   optionalString,
+  requireArray,
+  requireObject,
   requirePositiveInt,
   requireString,
 } from "../../utils/validation";
@@ -20,6 +24,10 @@ import {
   UpdateNpcInput,
   UpdateShopProductInput,
   UpdateTrainingInput,
+  MissionJourneyChoiceInput,
+  MissionJourneyEnemyInput,
+  MissionJourneyInput,
+  MissionJourneyNodeInput,
 } from "./admin.types";
 
 const parseBoolean = (value: unknown, fieldName: string): boolean | undefined => {
@@ -93,10 +101,130 @@ const optionalIsoDate = (value: unknown, fieldName: string) => {
   return requireIsoDate(value, fieldName);
 };
 
+const optionalPositiveInt = (
+  value: unknown,
+  fieldName: string,
+  options?: { min?: number; max?: number }
+) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return requirePositiveInt(value, fieldName, options);
+};
+
+const parseMissionEnemy = (value: unknown, fieldName: string): MissionJourneyEnemyInput => {
+  const enemy = requireObject(value, fieldName);
+
+  return {
+    name: requireString(enemy.name, `${fieldName}.name`, 2, 80),
+    imageUrl: optionalString(enemy.imageUrl, `${fieldName}.imageUrl`, 1, 255),
+    level: requirePositiveInt(enemy.level, `${fieldName}.level`, { min: 1, max: 999 }),
+    health: requirePositiveInt(enemy.health, `${fieldName}.health`, { min: 1, max: 1_000_000 }),
+    attack: requirePositiveInt(enemy.attack, `${fieldName}.attack`, { min: 1, max: 1_000_000 }),
+    defense: requirePositiveInt(enemy.defense, `${fieldName}.defense`, { min: 0, max: 1_000_000 }),
+  };
+};
+
+const parseMissionChoices = (value: unknown, fieldName: string): MissionJourneyChoiceInput[] => {
+  return requireArray(value, fieldName).map((entry, index) => {
+    const choice = requireObject(entry, `${fieldName}[${index}]`);
+
+    return {
+      id: requireString(choice.id, `${fieldName}[${index}].id`, 1, 80),
+      label: requireString(choice.label, `${fieldName}[${index}].label`, 1, 120),
+      description: optionalString(
+        choice.description,
+        `${fieldName}[${index}].description`,
+        1,
+        255
+      ),
+      nextNodeId: requireString(choice.nextNodeId, `${fieldName}[${index}].nextNodeId`, 1, 80),
+    };
+  });
+};
+
+const parseMissionNode = (value: unknown, fieldName: string): MissionJourneyNodeInput => {
+  const node = requireObject(value, fieldName);
+  const type = requireString(node.type, `${fieldName}.type`, 1, 40) as MissionJourneyNodeInput["type"];
+
+  if (!["DIALOGUE", "CHOICE", "COMBAT", "RETURN_TO_NPC", "COMPLETE"].includes(type)) {
+    throw new AppError(400, `Campo ${fieldName}.type invalido.`, "VALIDATION_ERROR");
+  }
+
+  const parsed: MissionJourneyNodeInput = {
+    id: requireString(node.id, `${fieldName}.id`, 1, 80),
+    type,
+    title: optionalString(node.title, `${fieldName}.title`, 1, 120),
+    text: optionalString(node.text, `${fieldName}.text`, 1, 1000),
+    nextNodeId: optionalString(node.nextNodeId, `${fieldName}.nextNodeId`, 1, 80),
+    npcId: optionalString(node.npcId, `${fieldName}.npcId`, 1, 80),
+  };
+
+  if (type === "CHOICE") {
+    parsed.choices = parseMissionChoices(node.choices, `${fieldName}.choices`);
+  }
+
+  if (type === "COMBAT") {
+    parsed.enemy = parseMissionEnemy(node.enemy, `${fieldName}.enemy`);
+  }
+
+  return parsed;
+};
+
+const parseMissionJourney = (value: unknown, fieldName: string): MissionJourneyInput => {
+  const journey = requireObject(value, fieldName);
+  const nodes = requireArray(journey.nodes, `${fieldName}.nodes`).map((entry, index) =>
+    parseMissionNode(entry, `${fieldName}.nodes[${index}]`)
+  );
+  const startNodeId = requireString(journey.startNodeId, `${fieldName}.startNodeId`, 1, 80);
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  if (!nodeIds.has(startNodeId)) {
+    throw new AppError(
+      400,
+      `Campo ${fieldName}.startNodeId deve apontar para um no existente.`,
+      "VALIDATION_ERROR"
+    );
+  }
+
+  for (const node of nodes) {
+    if (node.nextNodeId && !nodeIds.has(node.nextNodeId)) {
+      throw new AppError(
+        400,
+        `No ${node.id} aponta para nextNodeId inexistente.`,
+        "VALIDATION_ERROR"
+      );
+    }
+
+    for (const choice of node.choices ?? []) {
+      if (!nodeIds.has(choice.nextNodeId)) {
+        throw new AppError(
+          400,
+          `Escolha ${choice.id} do no ${node.id} aponta para nextNodeId inexistente.`,
+          "VALIDATION_ERROR"
+        );
+      }
+    }
+  }
+
+  return { startNodeId, nodes };
+};
+
+const optionalMissionJourney = (value: unknown, fieldName: string) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return parseMissionJourney(value, fieldName);
+};
+
 export const validateCreateMonster = (req: Request): void => {
   const body = getBody(req);
   const parsed: CreateMonsterInput = {
     name: requireString(body.name, "name", 2, 80),
+    description: optionalString(body.description, "description", 1, 255),
+    imageUrl: optionalString(body.imageUrl, "imageUrl", 1, 255),
     level: requirePositiveInt(body.level, "level", { min: 1, max: 999 }),
     health: requirePositiveInt(body.health, "health", { min: 1, max: 1_000_000 }),
     attack: requirePositiveInt(body.attack, "attack", { min: 1, max: 1_000_000 }),
@@ -111,6 +239,8 @@ export const validateUpdateMonster = (req: Request): void => {
   const body = getBody(req);
   const parsed: UpdateMonsterInput = {
     name: optionalString(body.name, "name", 2, 80),
+    description: optionalString(body.description, "description", 1, 255),
+    imageUrl: optionalString(body.imageUrl, "imageUrl", 1, 255),
     level: optionalNumber(body.level, "level", { min: 1, max: 999 }),
     health: optionalNumber(body.health, "health", { min: 1, max: 1_000_000 }),
     attack: optionalNumber(body.attack, "attack", { min: 1, max: 1_000_000 }),
@@ -201,6 +331,16 @@ export const validateCreateMission = (req: Request): void => {
       min: 1,
       max: 999,
     }),
+    imageUrl: optionalString(body.imageUrl, "imageUrl", 1, 255),
+    startNpcId: optionalString(body.startNpcId, "startNpcId", 1, 80),
+    completionNpcId: optionalString(body.completionNpcId, "completionNpcId", 1, 80),
+    startDialogue: optionalString(body.startDialogue, "startDialogue", 1, 1000),
+    completionDialogue: optionalString(body.completionDialogue, "completionDialogue", 1, 1000),
+    repeatCooldownSeconds: optionalPositiveInt(body.repeatCooldownSeconds, "repeatCooldownSeconds", {
+      min: 0,
+      max: 31_536_000,
+    }),
+    journey: optionalMissionJourney(body.journey, "journey"),
     enemyName: requireString(body.enemyName, "enemyName", 2, 80),
     enemyLevel: requirePositiveInt(body.enemyLevel, "enemyLevel", { min: 1, max: 999 }),
     enemyHealth: requirePositiveInt(body.enemyHealth, "enemyHealth", {
@@ -246,6 +386,16 @@ export const validateUpdateMission = (req: Request): void => {
       min: 1,
       max: 999,
     }),
+    imageUrl: optionalString(body.imageUrl, "imageUrl", 1, 255),
+    startNpcId: optionalString(body.startNpcId, "startNpcId", 1, 80),
+    completionNpcId: optionalString(body.completionNpcId, "completionNpcId", 1, 80),
+    startDialogue: optionalString(body.startDialogue, "startDialogue", 1, 1000),
+    completionDialogue: optionalString(body.completionDialogue, "completionDialogue", 1, 1000),
+    repeatCooldownSeconds: optionalPositiveInt(body.repeatCooldownSeconds, "repeatCooldownSeconds", {
+      min: 0,
+      max: 31_536_000,
+    }),
+    journey: optionalMissionJourney(body.journey, "journey"),
     enemyName: optionalString(body.enemyName, "enemyName", 2, 80),
     enemyLevel: optionalNumber(body.enemyLevel, "enemyLevel", { min: 1, max: 999 }),
     enemyHealth: optionalNumber(body.enemyHealth, "enemyHealth", {
@@ -325,6 +475,7 @@ export const validateCreateNpc = (req: Request): void => {
     name: requireString(body.name, "name", 2, 100),
     role: requireString(body.role, "role", 2, 60),
     interactionType: requireString(body.interactionType, "interactionType", 2, 60),
+    imageUrl: optionalString(body.imageUrl, "imageUrl", 1, 255),
     description: optionalString(body.description, "description", 1, 500),
     dialogue: optionalString(body.dialogue, "dialogue", 1, 500),
     xpReward: optionalNumber(body.xpReward, "xpReward", { min: 0, max: 1_000_000 }),
@@ -354,6 +505,7 @@ export const validateUpdateNpc = (req: Request): void => {
     name: optionalString(body.name, "name", 2, 100),
     role: optionalString(body.role, "role", 2, 60),
     interactionType: optionalString(body.interactionType, "interactionType", 2, 60),
+    imageUrl: optionalString(body.imageUrl, "imageUrl", 1, 255),
     description: optionalString(body.description, "description", 1, 500),
     dialogue: optionalString(body.dialogue, "dialogue", 1, 500),
     xpReward: optionalNumber(body.xpReward, "xpReward", { min: 0, max: 1_000_000 }),

@@ -1,5 +1,7 @@
 export interface CreateMonsterInput {
   name: string;
+  description?: string;
+  imageUrl?: string;
   level: number;
   health: number;
   attack: number;
@@ -8,6 +10,45 @@ export interface CreateMonsterInput {
 }
 
 export interface UpdateMonsterInput extends Partial<CreateMonsterInput> {}
+
+export type MissionJourneyNodeType =
+  | "DIALOGUE"
+  | "CHOICE"
+  | "COMBAT"
+  | "RETURN_TO_NPC"
+  | "COMPLETE";
+
+export interface MissionJourneyChoiceInput {
+  id: string;
+  label: string;
+  description?: string;
+  nextNodeId: string;
+}
+
+export interface MissionJourneyEnemyInput {
+  name: string;
+  imageUrl?: string;
+  level: number;
+  health: number;
+  attack: number;
+  defense: number;
+}
+
+export interface MissionJourneyNodeInput {
+  id: string;
+  type: MissionJourneyNodeType;
+  title?: string;
+  text?: string;
+  nextNodeId?: string;
+  npcId?: string;
+  enemy?: MissionJourneyEnemyInput;
+  choices?: MissionJourneyChoiceInput[];
+}
+
+export interface MissionJourneyInput {
+  startNodeId: string;
+  nodes: MissionJourneyNodeInput[];
+}
 
 export interface CreateBountyInput {
   title: string;
@@ -36,6 +77,13 @@ export interface CreateMissionInput {
   description?: string;
   difficulty: "EASY" | "MEDIUM" | "HARD" | "ELITE";
   recommendedLevel: number;
+  imageUrl?: string;
+  startNpcId?: string;
+  completionNpcId?: string;
+  startDialogue?: string;
+  completionDialogue?: string;
+  repeatCooldownSeconds?: number;
+  journey?: MissionJourneyInput;
   enemyName: string;
   enemyLevel: number;
   enemyHealth: number;
@@ -71,6 +119,7 @@ export interface CreateNpcInput {
   name: string;
   role: string;
   interactionType: string;
+  imageUrl?: string;
   description?: string;
   dialogue?: string;
   xpReward?: number;
