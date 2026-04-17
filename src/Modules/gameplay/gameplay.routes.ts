@@ -2,6 +2,7 @@ import { Router } from "express";
 import auth from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
 import {
+  abandonMissionJourney,
   executeCombatTurn,
   executeBountyHunt,
   executeMarketAction,
@@ -52,6 +53,10 @@ router.post(
   "/characters/:characterId/missions/sessions/:sessionId/progress",
   validate(validateProgressMissionJourney),
   progressMissionJourney
+);
+router.post(
+  "/characters/:characterId/missions/sessions/:sessionId/abandon",
+  abandonMissionJourney
 );
 
 router.post(

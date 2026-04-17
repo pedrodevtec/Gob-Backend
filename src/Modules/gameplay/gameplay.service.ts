@@ -321,6 +321,100 @@ export class GameplayService {
     return this.resolveMissionNode(character, updated);
   }
 
+  static async abandonMissionJourney(userId: string, characterId: string, sessionId: string) {
+    const character = await this.getGameplayCharacter(userId, characterId);
+    const session = await prisma.characterMissionSession.findFirst({
+      where: { id: sessionId, characterId },
+      include: { mission: { include: { startNpc: true, completionNpc: true } } },
+    });
+
+    if (!session) {
+      throw new AppError(404, "Sessao de missao nao encontrada.", "MISSION_SESSION_NOT_FOUND");
+    }
+
+    if (
+      session.status !== MissionSessionStatus.IN_PROGRESS &&
+      session.status !== MissionSessionStatus.READY_TO_TURN_IN
+    ) {
+      throw new AppError(
+        409,
+        "Apenas missoes em andamento podem ser abandonadas.",
+        "MISSION_SESSION_CANNOT_BE_ABANDONED"
+      );
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const activeCombat = await tx.combatSession.findFirst({
+        where: { missionSessionId: session.id, status: CombatSessionStatus.IN_PROGRESS },
+      });
+
+      let characterState: Record<string, unknown> | null = null;
+      let combatSession: Record<string, unknown> | null = null;
+
+      if (activeCombat) {
+        characterState = await this.persistCombatState(
+          tx,
+          character.id,
+          activeCombat.characterCurrentHealth,
+          character.level,
+          false,
+          this.getCombatSessionBuffPercent(activeCombat.metadata)
+        );
+
+        const escapedCombat = await tx.combatSession.update({
+          where: { id: activeCombat.id },
+          data: {
+            status: CombatSessionStatus.ESCAPED,
+            completedAt: new Date(),
+          },
+        });
+
+        combatSession = this.serializeCombatSession(
+          escapedCombat,
+          deriveCharacterStats({
+            level: character.level,
+            className: character.class.name,
+            classModifier: character.class.modifier,
+            equipmentEffects: character.inventory.equipments
+              .filter((entry) => entry.isEquipped)
+              .map((entry) => entry.effect),
+            buffPercent: this.getCombatSessionBuffPercent(activeCombat.metadata),
+          })
+        );
+      }
+
+      const abandoned = await tx.characterMissionSession.update({
+        where: { id: session.id },
+        data: {
+          status: MissionSessionStatus.ABANDONED,
+          completedAt: new Date(),
+          metadata: this.extendMissionSessionMetadata(session.metadata, {
+            abandonedAt: new Date().toISOString(),
+            abandonedDuringCombat: Boolean(activeCombat),
+          }),
+        },
+        include: { mission: { include: { startNpc: true, completionNpc: true } } },
+      });
+
+      await this.recordActionLog(
+        tx,
+        character.id,
+        "MISSION",
+        session.missionId,
+        "ABANDONED",
+        this.getMissionSessionNextAvailableAt(session.metadata) ?? undefined,
+        JSON.stringify({ sessionId: session.id, abandonedDuringCombat: Boolean(activeCombat) })
+      );
+
+      return {
+        ...(await this.buildMissionSessionPayload(abandoned)),
+        abandoned: true,
+        characterState,
+        combatSession,
+      };
+    });
+  }
+
   static async executeBountyHunt(userId: string, characterId: string, input: BountyHuntInput) {
     const character = await this.getGameplayCharacter(userId, characterId);
     const activeBuff = await this.getActiveNpcBuff(characterId);

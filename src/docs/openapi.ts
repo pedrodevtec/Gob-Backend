@@ -1302,6 +1302,16 @@ export const openApiDocument = {
         responses: { "200": { description: "Jornada atualizada" }, "409": { $ref: "#/components/responses/Conflict" } },
       },
     },
+    "/api/v1/gameplay/characters/{characterId}/missions/sessions/{sessionId}/abandon": {
+      post: {
+        tags: ["Gameplay"],
+        summary: "Abandonar sessao de missao",
+        description: "Marca a jornada como abandonada e encerra o combate vinculado como escaped quando houver um combate em andamento.",
+        security: authSecurity,
+        parameters: [characterIdPathParam, sessionIdPathParam],
+        responses: { "200": { description: "Missao abandonada" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } },
+      },
+    },
     "/api/v1/gameplay/characters/{characterId}/actions/bounty-hunt": {
       post: {
         tags: ["Gameplay"],

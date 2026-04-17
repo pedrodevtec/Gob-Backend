@@ -1,6 +1,82 @@
-import { GameplayDifficulty, PrismaClient, ShopProductAssetKind, UserRole } from "@prisma/client";
+import {
+  GameplayDifficulty,
+  Prisma,
+  PrismaClient,
+  ShopProductAssetKind,
+  UserRole,
+} from "@prisma/client";
 
 const prisma = new PrismaClient();
+
+type SeedNpc = {
+  name: string;
+  role: string;
+  interactionType: string;
+  imageUrl?: string;
+  description?: string;
+  dialogue?: string;
+  xpReward?: number;
+  coinsReward?: number;
+  rewardItemName?: string;
+  rewardItemCategory?: string;
+  rewardItemType?: string;
+  rewardItemImg?: string;
+  rewardItemEffect?: string;
+  rewardItemValue?: number;
+  rewardItemQuantity?: number;
+};
+
+type SeedMission = {
+  title: string;
+  description?: string;
+  difficulty: GameplayDifficulty;
+  recommendedLevel: number;
+  imageUrl?: string;
+  startNpcName?: string;
+  completionNpcName?: string;
+  startDialogue?: string;
+  completionDialogue?: string;
+  repeatCooldownSeconds?: number;
+  journey?: {
+    startNodeId: string;
+    nodes: Array<{
+      id: string;
+      type: "DIALOGUE" | "CHOICE" | "COMBAT" | "RETURN_TO_NPC" | "COMPLETE";
+      title?: string;
+      text?: string;
+      nextNodeId?: string;
+      npcId?: string;
+      enemy?: {
+        name: string;
+        imageUrl?: string;
+        level: number;
+        health: number;
+        attack: number;
+        defense: number;
+      };
+      choices?: Array<{
+        id: string;
+        label: string;
+        description?: string;
+        nextNodeId: string;
+      }>;
+    }>;
+  };
+  enemyName: string;
+  enemyLevel: number;
+  enemyHealth: number;
+  enemyAttack: number;
+  enemyDefense: number;
+  rewardXp: number;
+  rewardCoins: number;
+  rewardItemName?: string;
+  rewardItemCategory?: string;
+  rewardItemType?: string;
+  rewardItemImg?: string;
+  rewardItemEffect?: string;
+  rewardItemValue?: number;
+  rewardItemQuantity?: number;
+};
 
 async function main() {
   const adminEmail = process.env.SEED_ADMIN_EMAIL;
@@ -458,7 +534,7 @@ async function main() {
     }
   }
 
-  const missions = [
+  const missions: SeedMission[] = [
   // =========================
   // EARLY GAME | LV 1 - 20
   // =========================
@@ -885,6 +961,583 @@ async function main() {
     rewardItemValue: 1,
     rewardItemQuantity: 1,
   },
+  {
+    title: "Chamado do Piquete",
+    description: "Primeira patrulha nas cercanias do posto para treinar reconhecimento e resposta rapida.",
+    difficulty: GameplayDifficulty.EASY,
+    recommendedLevel: 1,
+    imageUrl: "/assets/missions/picket-call.png",
+    startNpcName: "Mestre Rowan",
+    completionNpcName: "Capita Mira",
+    startDialogue: "Mestre Rowan quer ver se voce aguenta uma patrulha real sem perder o foco.",
+    completionDialogue: "Servico simples, mas bem executado. Continue assim.",
+    repeatCooldownSeconds: 600,
+    journey: {
+      startNodeId: "rowan-briefing",
+      nodes: [
+        {
+          id: "rowan-briefing",
+          type: "DIALOGUE",
+          title: "Patrulha inicial",
+          text: "Rowan manda voce verificar um piquete que deixou de responder ao posto avancado.",
+          nextNodeId: "trail-choice",
+        },
+        {
+          id: "trail-choice",
+          type: "CHOICE",
+          title: "Como procurar",
+          text: "Voce pode seguir marcas recentes no barro ou inspecionar as carrocas abandonadas na estrada.",
+          choices: [
+            {
+              id: "mud-tracks",
+              label: "Seguir as marcas no barro",
+              description: "Chega mais rapido ao agressor.",
+              nextNodeId: "quick-scout",
+            },
+            {
+              id: "inspect-carts",
+              label: "Inspecionar as carrocas",
+              description: "Busca pistas antes de avancar.",
+              nextNodeId: "cart-scout",
+            },
+          ],
+        },
+        {
+          id: "quick-scout",
+          type: "DIALOGUE",
+          text: "As pegadas levam a um salteador escondido atras da mureta do caminho.",
+          nextNodeId: "picket-combat",
+        },
+        {
+          id: "cart-scout",
+          type: "DIALOGUE",
+          text: "Entre caixotes quebrados voce encontra um emblema roubado do piquete e localiza o agressor.",
+          nextNodeId: "picket-combat",
+        },
+        {
+          id: "picket-combat",
+          type: "COMBAT",
+          title: "Salteador do acostamento",
+          text: "Derrote o invasor e recupere o sinal do piquete.",
+          enemy: {
+            name: "Salteador do Acostamento",
+            imageUrl: "/assets/enemies/roadside-raider.png",
+            level: 1,
+            health: 40,
+            attack: 8,
+            defense: 3,
+          },
+          nextNodeId: "picket-turn-in",
+        },
+        {
+          id: "picket-turn-in",
+          type: "RETURN_TO_NPC",
+          text: "Leve o sinal recuperado para a Capita Mira.",
+          npcId: "completion-npc-placeholder",
+          nextNodeId: "picket-complete",
+        },
+        {
+          id: "picket-complete",
+          type: "COMPLETE",
+          text: "O posto confirma a patrulha e registra sua primeira resposta de campo.",
+        },
+      ],
+    },
+    enemyName: "Salteador do Acostamento",
+    enemyLevel: 1,
+    enemyHealth: 40,
+    enemyAttack: 8,
+    enemyDefense: 3,
+    rewardXp: 28,
+    rewardCoins: 16,
+    rewardItemName: "Sinal do Piquete",
+    rewardItemCategory: "quest",
+    rewardItemType: "picket_token",
+    rewardItemImg: "/assets/items/picket-token.png",
+    rewardItemEffect: "Identificacao recuperada de um destacamento local",
+    rewardItemValue: 12,
+    rewardItemQuantity: 1,
+  },
+  {
+    title: "Remedios para a Enfermaria",
+    description: "Escolta curta para recuperar caixas de ervas roubadas perto da estrada.",
+    difficulty: GameplayDifficulty.EASY,
+    recommendedLevel: 2,
+    imageUrl: "/assets/missions/infirmary-herbs.png",
+    startNpcName: "Irmã Elise",
+    completionNpcName: "Irmã Elise",
+    startDialogue: "A enfermaria ficou sem suprimentos depois de um saque na madrugada.",
+    completionDialogue: "Essas ervas vao manter metade do posto de pe esta noite.",
+    repeatCooldownSeconds: 720,
+    journey: {
+      startNodeId: "herb-briefing",
+      nodes: [
+        {
+          id: "herb-briefing",
+          type: "DIALOGUE",
+          title: "Pedido urgente",
+          text: "Irma Elise explica que as caixas foram arrastadas para o bosque baixo ao norte.",
+          nextNodeId: "herb-choice",
+        },
+        {
+          id: "herb-choice",
+          type: "CHOICE",
+          title: "Onde procurar primeiro",
+          text: "Voce pode subir pela trilha seca ou cortar pelo riacho raso para chegar mais perto do esconderijo.",
+          choices: [
+            {
+              id: "dry-path",
+              label: "Usar a trilha seca",
+              description: "Mais segura, porem mais longa.",
+              nextNodeId: "dry-path-dialogue",
+            },
+            {
+              id: "shallow-creek",
+              label: "Cortar pelo riacho",
+              description: "Mais rapida, com chance maior de ser visto.",
+              nextNodeId: "creek-dialogue",
+            },
+          ],
+        },
+        {
+          id: "dry-path-dialogue",
+          type: "DIALOGUE",
+          text: "Pela trilha voce encontra rastros de arrasto e confirma onde a carga foi escondida.",
+          nextNodeId: "herb-combat",
+        },
+        {
+          id: "creek-dialogue",
+          type: "DIALOGUE",
+          text: "A agua abafa seus passos, mas um saqueador percebe sua aproximacao quando voce sai na clareira.",
+          nextNodeId: "herb-combat",
+        },
+        {
+          id: "herb-combat",
+          type: "COMBAT",
+          title: "Ladrao de suprimentos",
+          text: "Derrote o saqueador que protege as caixas da enfermaria.",
+          enemy: {
+            name: "Ladrao de Suprimentos",
+            imageUrl: "/assets/enemies/supply-thief.png",
+            level: 2,
+            health: 52,
+            attack: 10,
+            defense: 4,
+          },
+          nextNodeId: "herb-turn-in",
+        },
+        {
+          id: "herb-turn-in",
+          type: "RETURN_TO_NPC",
+          text: "Retorne a Irma Elise com as caixas recuperadas.",
+          npcId: "completion-npc-placeholder",
+          nextNodeId: "herb-complete",
+        },
+        {
+          id: "herb-complete",
+          type: "COMPLETE",
+          text: "A enfermaria recebe os remedios e volta a operar normalmente.",
+        },
+      ],
+    },
+    enemyName: "Ladrao de Suprimentos",
+    enemyLevel: 2,
+    enemyHealth: 52,
+    enemyAttack: 10,
+    enemyDefense: 4,
+    rewardXp: 36,
+    rewardCoins: 20,
+    rewardItemName: "Caixa de Ervas Selada",
+    rewardItemCategory: "quest",
+    rewardItemType: "sealed_herb_crate",
+    rewardItemImg: "/assets/items/sealed-herb-crate.png",
+    rewardItemEffect: "Suprimento medico recuperado",
+    rewardItemValue: 15,
+    rewardItemQuantity: 1,
+  },
+  {
+    title: "Rota dos Mercadores Perdida",
+    description: "Abra caminho para a caravana presa entre oportunistas e destrocos.",
+    difficulty: GameplayDifficulty.EASY,
+    recommendedLevel: 4,
+    imageUrl: "/assets/missions/merchant-route.png",
+    startNpcName: "Selma Mercadora",
+    completionNpcName: "Selma Mercadora",
+    startDialogue: "Selma perdeu contato com dois carregadores no trecho de pedra da subida.",
+    completionDialogue: "Sem essa rota eu perco estoque, clientes e paciencia. Bom trabalho.",
+    repeatCooldownSeconds: 780,
+    journey: {
+      startNodeId: "merchant-briefing",
+      nodes: [
+        {
+          id: "merchant-briefing",
+          type: "DIALOGUE",
+          title: "Carga atrasada",
+          text: "Selma descreve o ultimo ponto de parada da caravana e os sinais de emboscada na subida.",
+          nextNodeId: "merchant-choice",
+        },
+        {
+          id: "merchant-choice",
+          type: "CHOICE",
+          title: "Abordagem na subida",
+          text: "Voce pode inspecionar os barris jogados no caminho ou subir por um atalho entre rochas.",
+          choices: [
+            {
+              id: "check-barrels",
+              label: "Inspecionar os barris",
+              description: "Busca pistas da caravana antes do confronto.",
+              nextNodeId: "barrel-dialogue",
+            },
+            {
+              id: "rock-shortcut",
+              label: "Usar o atalho entre rochas",
+              description: "Chega mais rapido ao ponto de bloqueio.",
+              nextNodeId: "shortcut-dialogue",
+            },
+          ],
+        },
+        {
+          id: "barrel-dialogue",
+          type: "DIALOGUE",
+          text: "Os barris tem marcas recentes de faca. O lider dos saqueadores ainda esta por perto.",
+          nextNodeId: "merchant-combat",
+        },
+        {
+          id: "shortcut-dialogue",
+          type: "DIALOGUE",
+          text: "No atalho voce pega o bloqueio pelo flanco e obriga o vigia inimigo a lutar sem cobertura.",
+          nextNodeId: "merchant-combat",
+        },
+        {
+          id: "merchant-combat",
+          type: "COMBAT",
+          title: "Bloqueio da caravana",
+          text: "Derrote o saqueador que comanda a emboscada da rota comercial.",
+          enemy: {
+            name: "Vigia da Caravana Tomada",
+            imageUrl: "/assets/enemies/caravan-lookout.png",
+            level: 4,
+            health: 74,
+            attack: 14,
+            defense: 6,
+          },
+          nextNodeId: "merchant-turn-in",
+        },
+        {
+          id: "merchant-turn-in",
+          type: "RETURN_TO_NPC",
+          text: "Volte para Selma Mercadora e confirme a liberacao da rota.",
+          npcId: "completion-npc-placeholder",
+          nextNodeId: "merchant-complete",
+        },
+        {
+          id: "merchant-complete",
+          type: "COMPLETE",
+          text: "A rota comercial volta a operar e Selma registra a entrega como concluida.",
+        },
+      ],
+    },
+    enemyName: "Vigia da Caravana Tomada",
+    enemyLevel: 4,
+    enemyHealth: 74,
+    enemyAttack: 14,
+    enemyDefense: 6,
+    rewardXp: 58,
+    rewardCoins: 32,
+    rewardItemName: "Lacre Comercial Recuperado",
+    rewardItemCategory: "quest",
+    rewardItemType: "trade_seal",
+    rewardItemImg: "/assets/items/trade-seal.png",
+    rewardItemEffect: "Prova de reabertura da rota",
+    rewardItemValue: 20,
+    rewardItemQuantity: 1,
+  },
+  {
+    title: "Fogueira na Mata Rasa",
+    description: "Neutralize o bando que se reagrupou perto das arvores queimadas do limite sul.",
+    difficulty: GameplayDifficulty.MEDIUM,
+    recommendedLevel: 8,
+    imageUrl: "/assets/missions/shallow-woods-fire.png",
+    startNpcName: "Capita Mira",
+    completionNpcName: "Mestre Rowan",
+    startDialogue: "Os vigias viram fumaca de acampamento onde nao deveria haver ninguem.",
+    completionDialogue: "Voce nao so venceu. Voltou com informacao util. Isso importa.",
+    repeatCooldownSeconds: 960,
+    journey: {
+      startNodeId: "fire-briefing",
+      nodes: [
+        {
+          id: "fire-briefing",
+          type: "DIALOGUE",
+          title: "Sinais de acampamento",
+          text: "Capita Mira pede que voce confirme a presenca do bando e corte a lideranca antes do anoitecer.",
+          nextNodeId: "fire-choice",
+        },
+        {
+          id: "fire-choice",
+          type: "CHOICE",
+          title: "Entrada no acampamento",
+          text: "Voce pode circular pelo lado queimado da mata ou se aproximar pela trilha dos caçadores.",
+          choices: [
+            {
+              id: "burned-side",
+              label: "Circular pelo lado queimado",
+              description: "Menos cobertura, mas visao melhor do acampamento.",
+              nextNodeId: "burned-side-dialogue",
+            },
+            {
+              id: "hunter-trail",
+              label: "Usar a trilha dos caçadores",
+              description: "Mais cobertura para se aproximar silenciosamente.",
+              nextNodeId: "hunter-trail-dialogue",
+            },
+          ],
+        },
+        {
+          id: "burned-side-dialogue",
+          type: "DIALOGUE",
+          text: "Pelo lado queimado voce identifica o lider junto a fogueira central organizando a guarda.",
+          nextNodeId: "fire-combat",
+        },
+        {
+          id: "hunter-trail-dialogue",
+          type: "DIALOGUE",
+          text: "A trilha leva voce ate a retaguarda do acampamento, onde o bando se prepara para mais um saque.",
+          nextNodeId: "fire-combat",
+        },
+        {
+          id: "fire-combat",
+          type: "COMBAT",
+          title: "Comandante da fogueira",
+          text: "Derrote o chefe do bando antes que ele disperse pela mata.",
+          enemy: {
+            name: "Chefe da Mata Rasa",
+            imageUrl: "/assets/enemies/shallow-woods-chief.png",
+            level: 8,
+            health: 132,
+            attack: 24,
+            defense: 11,
+          },
+          nextNodeId: "fire-turn-in",
+        },
+        {
+          id: "fire-turn-in",
+          type: "RETURN_TO_NPC",
+          text: "Retorne ao Mestre Rowan e relate como o acampamento foi desmontado.",
+          npcId: "completion-npc-placeholder",
+          nextNodeId: "fire-complete",
+        },
+        {
+          id: "fire-complete",
+          type: "COMPLETE",
+          text: "O acampamento e desmontado e a regiao volta a ficar patrulhavel.",
+        },
+      ],
+    },
+    enemyName: "Chefe da Mata Rasa",
+    enemyLevel: 8,
+    enemyHealth: 132,
+    enemyAttack: 24,
+    enemyDefense: 11,
+    rewardXp: 138,
+    rewardCoins: 78,
+    rewardItemName: "Marca de Cinza",
+    rewardItemCategory: "quest",
+    rewardItemType: "ash_mark",
+    rewardItemImg: "/assets/items/ash-mark.png",
+    rewardItemEffect: "Trofeu de patrulha usado no registro militar",
+    rewardItemValue: 38,
+    rewardItemQuantity: 1,
+  },
+  {
+    title: "Ultimo Sino da Capela",
+    description: "Investigue a pequena capela do caminho leste e silencie a criatura que tomou o local.",
+    difficulty: GameplayDifficulty.MEDIUM,
+    recommendedLevel: 10,
+    imageUrl: "/assets/missions/chapel-bell.png",
+    startNpcName: "Irmã Elise",
+    completionNpcName: "Vigia Tomas",
+    startDialogue: "O sino da capela tocou sozinho a madrugada inteira. Alguem precisa verificar.",
+    completionDialogue: "A capela volta a servir de abrigo. Isso vai aliviar a rota leste.",
+    repeatCooldownSeconds: 1080,
+    journey: {
+      startNodeId: "chapel-briefing",
+      nodes: [
+        {
+          id: "chapel-briefing",
+          type: "DIALOGUE",
+          title: "Eco na capela",
+          text: "Irma Elise acredita que algo expulsou os viajantes do refugio da estrada leste.",
+          nextNodeId: "chapel-choice",
+        },
+        {
+          id: "chapel-choice",
+          type: "CHOICE",
+          title: "Como entrar",
+          text: "Voce pode entrar pela porta principal trincada ou contornar e acessar pelos fundos do cemitério.",
+          choices: [
+            {
+              id: "front-door",
+              label: "Entrar pela porta principal",
+              description: "Entrada direta e mais arriscada.",
+              nextNodeId: "front-door-dialogue",
+            },
+            {
+              id: "graveyard-back",
+              label: "Contornar pelo cemitério",
+              description: "Acesso silencioso pelos fundos.",
+              nextNodeId: "graveyard-dialogue",
+            },
+          ],
+        },
+        {
+          id: "front-door-dialogue",
+          type: "DIALOGUE",
+          text: "O eco do sino atrai voce ate o altar quebrado, onde a criatura guarda o centro da capela.",
+          nextNodeId: "chapel-combat",
+        },
+        {
+          id: "graveyard-dialogue",
+          type: "DIALOGUE",
+          text: "Pelos fundos voce encontra marcas de garras e percebe que a criatura fez ninho perto do sino.",
+          nextNodeId: "chapel-combat",
+        },
+        {
+          id: "chapel-combat",
+          type: "COMBAT",
+          title: "Profanador do sino",
+          text: "Derrote a criatura que dominou a capela e restaure o abrigo da estrada.",
+          enemy: {
+            name: "Profanador da Capela",
+            imageUrl: "/assets/enemies/chapel-defiler.png",
+            level: 10,
+            health: 158,
+            attack: 28,
+            defense: 13,
+          },
+          nextNodeId: "chapel-turn-in",
+        },
+        {
+          id: "chapel-turn-in",
+          type: "RETURN_TO_NPC",
+          text: "Entregue o relato ao Vigia Tomas para liberar a rota leste.",
+          npcId: "completion-npc-placeholder",
+          nextNodeId: "chapel-complete",
+        },
+        {
+          id: "chapel-complete",
+          type: "COMPLETE",
+          text: "O sino se cala, a capela e reaberta e a patrulha atualiza o mapa seguro da regiao.",
+        },
+      ],
+    },
+    enemyName: "Profanador da Capela",
+    enemyLevel: 10,
+    enemyHealth: 158,
+    enemyAttack: 28,
+    enemyDefense: 13,
+    rewardXp: 164,
+    rewardCoins: 92,
+    rewardItemName: "Fragmento do Sino",
+    rewardItemCategory: "quest",
+    rewardItemType: "chapel_bell_fragment",
+    rewardItemImg: "/assets/items/chapel-bell-fragment.png",
+    rewardItemEffect: "Prova da purificacao da capela",
+    rewardItemValue: 44,
+    rewardItemQuantity: 1,
+  },
+  {
+    title: "Sinais na Ponte Partida",
+    description: "Exemplo de missao no novo formato com NPC de origem, escolha de abordagem, combate e entrega.",
+    difficulty: GameplayDifficulty.MEDIUM,
+    recommendedLevel: 6,
+    imageUrl: "/assets/missions/broken-bridge.png",
+    startNpcName: "Capita Mira",
+    completionNpcName: "Vigia Tomas",
+    startDialogue: "Capita Mira precisa de um batedor para inspecionar a ponte partida.",
+    completionDialogue: "Bom trabalho. A estrada volta a ficar segura por hoje.",
+    repeatCooldownSeconds: 900,
+    journey: {
+      startNodeId: "briefing",
+      nodes: [
+        {
+          id: "briefing",
+          type: "DIALOGUE",
+          title: "Briefing na barricada",
+          text: "Capita Mira aponta para a neblina: ha rastros de saqueadores e sinais de emboscada perto da ponte.",
+          nextNodeId: "approach",
+        },
+        {
+          id: "approach",
+          type: "CHOICE",
+          title: "Escolha a abordagem",
+          text: "Voce pode seguir pela trilha lateral ou cruzar a ponte direto para pressionar o lider inimigo.",
+          choices: [
+            {
+              id: "scout-trail",
+              label: "Seguir pela trilha lateral",
+              description: "Caminho mais seguro e observacao do alvo antes do confronto.",
+              nextNodeId: "trail-dialogue",
+            },
+            {
+              id: "rush-bridge",
+              label: "Avancar pela ponte",
+              description: "Entrada direta para um confronto imediato e mais agressivo.",
+              nextNodeId: "bridge-combat",
+            },
+          ],
+        },
+        {
+          id: "trail-dialogue",
+          type: "DIALOGUE",
+          title: "Observacao do terreno",
+          text: "Pela lateral, voce identifica o lider coordenando o bloqueio e encontra o melhor momento para atacar.",
+          nextNodeId: "bridge-combat",
+        },
+        {
+          id: "bridge-combat",
+          type: "COMBAT",
+          title: "Confronto na ponte",
+          text: "Derrote o lider dos saqueadores e abra passagem para as caravanas.",
+          enemy: {
+            name: "Chefe da Ponte Partida",
+            imageUrl: "/assets/enemies/broken-bridge-chief.png",
+            level: 7,
+            health: 118,
+            attack: 22,
+            defense: 10,
+          },
+          nextNodeId: "turn-in",
+        },
+        {
+          id: "turn-in",
+          type: "RETURN_TO_NPC",
+          text: "Volte ate o Vigia Tomas e entregue o relatorio da patrulha.",
+          npcId: "completion-npc-placeholder",
+          nextNodeId: "complete",
+        },
+        {
+          id: "complete",
+          type: "COMPLETE",
+          text: "A ponte foi liberada e o posto avancado retomou o controle da rota.",
+        },
+      ],
+    },
+    enemyName: "Chefe da Ponte Partida",
+    enemyLevel: 7,
+    enemyHealth: 118,
+    enemyAttack: 22,
+    enemyDefense: 10,
+    rewardXp: 120,
+    rewardCoins: 72,
+    rewardItemName: "Relatorio Lacrado da Patrulha",
+    rewardItemCategory: "quest",
+    rewardItemType: "sealed_patrol_report",
+    rewardItemImg: "/assets/items/sealed-patrol-report.png",
+    rewardItemEffect: "Documento usado para confirmar a entrega da missao",
+    rewardItemValue: 35,
+    rewardItemQuantity: 1,
+  },
 ];
 
   const trainings = [
@@ -937,7 +1590,7 @@ async function main() {
     }
   }
 
-  const npcs = [
+  const npcs: SeedNpc[] = [
     {
       name: "Mestre Rowan",
       role: "mentor",
@@ -981,7 +1634,29 @@ async function main() {
       xpReward: 0,
       coinsReward: 0,
     },
+    {
+      name: "Capita Mira",
+      role: "commander",
+      interactionType: "mission_giver",
+      imageUrl: "/assets/npcs/captain-mira.png",
+      description: "Responsavel pela seguranca do posto avancado na Estrada Velha.",
+      dialogue: "Preciso de alguem para reconhecer a ponte e eliminar quem estiver bloqueando a rota.",
+      xpReward: 0,
+      coinsReward: 12,
+    },
+    {
+      name: "Vigia Tomas",
+      role: "quartermaster",
+      interactionType: "mission_receiver",
+      imageUrl: "/assets/npcs/watchman-tomas.png",
+      description: "Vigia que registra relatorios e recompensas das patrulhas locais.",
+      dialogue: "Se a rota estiver limpa, eu valido o relatorio e libero sua recompensa.",
+      xpReward: 15,
+      coinsReward: 10,
+    },
   ];
+
+  const seededNpcsByName = new Map<string, { id: string; name: string }>();
 
   for (const npc of npcs) {
     const existingNpc = await prisma.npcDefinition.findFirst({
@@ -992,7 +1667,7 @@ async function main() {
     });
 
     if (existingNpc) {
-      await prisma.npcDefinition.update({
+      const persistedNpc = await prisma.npcDefinition.update({
         where: { id: existingNpc.id },
         data: {
           ...npc,
@@ -1000,13 +1675,82 @@ async function main() {
           rewardItemQuantity: npc.rewardItemQuantity ?? 1,
         },
       });
+
+      seededNpcsByName.set(persistedNpc.name, persistedNpc);
     } else {
-      await prisma.npcDefinition.create({
+      const persistedNpc = await prisma.npcDefinition.create({
         data: {
           ...npc,
           isActive: true,
           rewardItemQuantity: npc.rewardItemQuantity ?? 1,
         },
+      });
+
+      seededNpcsByName.set(persistedNpc.name, persistedNpc);
+    }
+  }
+
+  for (const mission of missions) {
+    const startNpcId = mission.startNpcName
+      ? seededNpcsByName.get(mission.startNpcName)?.id ?? null
+      : null;
+    const completionNpcId = mission.completionNpcName
+      ? seededNpcsByName.get(mission.completionNpcName)?.id ?? null
+      : null;
+
+    const journey =
+      mission.journey && completionNpcId
+        ? {
+            ...mission.journey,
+            nodes: mission.journey.nodes.map((node) =>
+              node.type === "RETURN_TO_NPC" && node.npcId === "completion-npc-placeholder"
+                ? { ...node, npcId: completionNpcId }
+                : node
+            ),
+          }
+        : mission.journey;
+
+    const missionData = {
+      title: mission.title,
+      description: mission.description,
+      difficulty: mission.difficulty,
+      recommendedLevel: mission.recommendedLevel,
+      imageUrl: mission.imageUrl ?? null,
+      startNpcId,
+      completionNpcId,
+      startDialogue: mission.startDialogue ?? null,
+      completionDialogue: mission.completionDialogue ?? null,
+      repeatCooldownSeconds: mission.repeatCooldownSeconds ?? 1800,
+      journey: journey ? (journey as Prisma.InputJsonValue) : Prisma.JsonNull,
+      enemyName: mission.enemyName,
+      enemyLevel: mission.enemyLevel,
+      enemyHealth: mission.enemyHealth,
+      enemyAttack: mission.enemyAttack,
+      enemyDefense: mission.enemyDefense,
+      rewardXp: mission.rewardXp,
+      rewardCoins: mission.rewardCoins,
+      rewardItemName: mission.rewardItemName ?? null,
+      rewardItemCategory: mission.rewardItemCategory ?? null,
+      rewardItemType: mission.rewardItemType ?? null,
+      rewardItemImg: mission.rewardItemImg ?? null,
+      rewardItemEffect: mission.rewardItemEffect ?? null,
+      rewardItemValue: mission.rewardItemValue ?? null,
+      rewardItemQuantity: mission.rewardItemQuantity ?? 1,
+      isActive: true,
+    };
+
+    const existingMission = await prisma.missionDefinition.findFirst({
+      where: { title: mission.title },
+    });
+
+    if (existingMission) {
+      await prisma.missionDefinition.update({
+        where: { id: existingMission.id },
+        data: missionData,
+      });
+    } else {
+      await prisma.missionDefinition.create({
+        data: missionData,
       });
     }
   }

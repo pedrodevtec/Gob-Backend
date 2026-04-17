@@ -64,6 +64,14 @@ export const progressMissionJourney = asyncHandler(async (req: Request, res: Res
   sendSuccess(res, 200, { result }, "Etapa da missao atualizada com sucesso.");
 });
 
+export const abandonMissionJourney = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const characterId = requireString(req.params.characterId, "characterId");
+  const sessionId = requireString(req.params.sessionId, "sessionId");
+  const result = await GameplayService.abandonMissionJourney(userId, characterId, sessionId);
+  sendSuccess(res, 200, { result }, "Missao abandonada com sucesso.");
+});
+
 export const executeBountyHunt = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const characterId = requireString(req.params.characterId, "characterId");
