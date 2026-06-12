@@ -83,6 +83,13 @@ enum TableMemberRole {
   PLAYER
 }
 
+enum CharacterReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_CHANGES
+}
+
 model User {
   id            String         @id @default(uuid())
   nome          String
@@ -114,6 +121,7 @@ model Character {
   avatarId       String?
   titleId        String?
   bannerId       String?
+  tableId        String?
   posX           Float?
   posY           Float?
   posZ           Float?
@@ -122,6 +130,7 @@ model Character {
   createdAt      DateTime       @default(now())
 
   user          User           @relation("UserToCharacter", fields: [userId], references: [id])
+  table         Table?         @relation(fields: [tableId], references: [id])
   inventory     Inventory?     @relation(fields: [inventoryId], references: [id])
   class         Class          @relation("ClassToCharacter", fields: [classId], references: [id])
   transactions  Transaction[]
@@ -136,6 +145,9 @@ model Character {
   pvpMatchesAsOpponent  PvpMatch[] @relation("PvpMatchOpponent")
   pvpWinsAsWinner       PvpMatch[] @relation("PvpMatchWinner")
   pvpLossesAsLoser      PvpMatch[] @relation("PvpMatchLoser")
+  reviews               CharacterReview[]
+
+  @@index([tableId, createdAt])
 }
 
 model Inventory {
@@ -510,6 +522,8 @@ model Table {
   master  User          @relation("TableMaster", fields: [masterUserId], references: [id])
   members TableMember[]
   world   TableWorld?
+  characters Character[]
+  characterReviews CharacterReview[]
 
   @@index([masterUserId, createdAt])
 }
@@ -541,4 +555,21 @@ model TableWorld {
   updatedAt                 DateTime @updatedAt
 
   table Table @relation(fields: [tableId], references: [id])
+}
+
+model CharacterReview {
+  id             String                @id @default(uuid())
+  tableId        String
+  characterId    String
+  status         CharacterReviewStatus @default(PENDING)
+  masterFeedback String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  table     Table     @relation(fields: [tableId], references: [id])
+  character Character @relation(fields: [characterId], references: [id])
+
+  @@unique([tableId, characterId])
+  @@index([tableId, status, createdAt])
+  @@index([characterId])
 }

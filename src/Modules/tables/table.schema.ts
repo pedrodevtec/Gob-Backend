@@ -55,3 +55,20 @@ export const validateUpsertTableWorld = (req: Request): void => {
 
   req.body = parsed;
 };
+
+export const validateReviewTableCharacter = (req: Request): void => {
+  const body = getBody(req);
+  const status = requireString(body.status, "status", 7, 20) as
+    | "APPROVED"
+    | "REJECTED"
+    | "NEEDS_CHANGES";
+
+  if (!["APPROVED", "REJECTED", "NEEDS_CHANGES"].includes(status)) {
+    throw new AppError(400, "Status de revisao invalido.", "VALIDATION_ERROR");
+  }
+
+  req.body = {
+    status,
+    masterFeedback: optionalString(body.masterFeedback, "masterFeedback", 1, 2000),
+  };
+};

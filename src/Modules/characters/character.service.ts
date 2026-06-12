@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { deriveCharacterStats, presentDerivedStats } from "../gameplay/combat.engine";
@@ -205,6 +206,15 @@ export class CharacterService {
   }
 
   static async createCharacter(userId: string, input: CreateCharacterInput) {
+    return prisma.$transaction((tx) => this.createCharacterRecord(tx, userId, input));
+  }
+
+  static async createCharacterRecord(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    input: CreateCharacterInput,
+    options?: { tableId?: string }
+  ) {
     const characterClass = await this.getClassForCreation(input.classId);
     const startingStats = deriveCharacterStats({
       level: 1,
@@ -212,37 +222,36 @@ export class CharacterService {
       className: characterClass.name,
     });
 
-    return prisma.$transaction(async (tx) => {
-      const inventory = await tx.inventory.create({
-        data: {
-          coins: 0,
-        },
-      });
-
-      const character = await tx.character.create({
-        data: {
-          userId,
-          name: input.name,
-          classId: characterClass.id,
-          inventoryId: inventory.id,
-          level: 1,
-          currentHealth: startingStats.maxHealth,
-          status: "READY",
-        },
-        include: {
-          class: true,
-        },
-      });
-
-      await tx.inventory.update({
-        where: { id: inventory.id },
-        data: {
-          characterId: character.id,
-        },
-      });
-
-      return character;
+    const inventory = await tx.inventory.create({
+      data: {
+        coins: 0,
+      },
     });
+
+    const character = await tx.character.create({
+      data: {
+        userId,
+        name: input.name,
+        classId: characterClass.id,
+        tableId: options?.tableId,
+        inventoryId: inventory.id,
+        level: 1,
+        currentHealth: startingStats.maxHealth,
+        status: "READY",
+      },
+      include: {
+        class: true,
+      },
+    });
+
+    await tx.inventory.update({
+      where: { id: inventory.id },
+      data: {
+        characterId: character.id,
+      },
+    });
+
+    return character;
   }
 
   static async getCharactersByUser(userId: string) {
@@ -578,6 +587,10 @@ export class CharacterService {
       });
 
       await tx.characterActionLog.deleteMany({
+        where: { characterId },
+      });
+
+      await tx.characterReview.deleteMany({
         where: { characterId },
       });
 

@@ -1,8 +1,15 @@
-import { Prisma, TableMemberRole } from "@prisma/client";
+import { CharacterReviewStatus, Prisma, TableMemberRole } from "@prisma/client";
 import { randomInt } from "crypto";
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
-import { CreateTableInput, JoinTableInput, UpsertTableWorldInput } from "./table.types";
+import { CharacterService } from "../characters/character.service";
+import {
+  CreateTableCharacterInput,
+  CreateTableInput,
+  JoinTableInput,
+  ReviewTableCharacterInput,
+  UpsertTableWorldInput,
+} from "./table.types";
 
 const MAX_TABLE_PLAYERS = 8;
 const JOIN_CODE_LENGTH = 6;
@@ -176,6 +183,92 @@ export class TableService {
         tone: input.tone ?? null,
         rules: input.rules ?? Prisma.JsonNull,
         characterCreationCriteria: input.characterCreationCriteria ?? Prisma.JsonNull,
+      },
+    });
+  }
+
+  static async createCharacter(userId: string, tableId: string, input: CreateTableCharacterInput) {
+    await this.ensureMembership(userId, tableId);
+
+    return prisma.$transaction(async (tx) => {
+      const character = await CharacterService.createCharacterRecord(tx, userId, input, {
+        tableId,
+      });
+
+      const review = await tx.characterReview.create({
+        data: {
+          tableId,
+          characterId: character.id,
+        },
+      });
+
+      return {
+        character,
+        review,
+      };
+    });
+  }
+
+  static async listCharacters(userId: string, tableId: string) {
+    await this.ensureMembership(userId, tableId);
+
+    return prisma.character.findMany({
+      where: { tableId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+          },
+        },
+        class: true,
+        reviews: {
+          where: { tableId },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  static async reviewCharacter(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    input: ReviewTableCharacterInput
+  ) {
+    await this.ensureMaster(userId, tableId);
+
+    const character = await prisma.character.findFirst({
+      where: {
+        id: characterId,
+        tableId,
+      },
+      select: { id: true },
+    });
+
+    if (!character) {
+      throw new AppError(404, "Personagem da mesa nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
+    }
+
+    return prisma.characterReview.upsert({
+      where: {
+        tableId_characterId: {
+          tableId,
+          characterId,
+        },
+      },
+      create: {
+        tableId,
+        characterId,
+        status: input.status as CharacterReviewStatus,
+        masterFeedback: input.masterFeedback ?? null,
+      },
+      update: {
+        status: input.status as CharacterReviewStatus,
+        masterFeedback: input.masterFeedback ?? null,
       },
     });
   }

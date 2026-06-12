@@ -42,3 +42,25 @@ export const upsertTableWorld = asyncHandler(async (req: Request, res: Response)
   const world = await TableService.upsertWorld(userId, tableId, req.body);
   sendSuccess(res, 200, { world }, "Mundo da mesa salvo com sucesso.");
 });
+
+export const createTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const result = await TableService.createCharacter(userId, tableId, req.body);
+  sendSuccess(res, 201, result, "Personagem enviado para revisao da mesa.");
+});
+
+export const listTableCharacters = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characters = await TableService.listCharacters(userId, tableId);
+  sendSuccess(res, 200, { characters });
+});
+
+export const reviewTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const review = await TableService.reviewCharacter(userId, tableId, characterId, req.body);
+  sendSuccess(res, 200, { review }, "Revisao do personagem atualizada com sucesso.");
+});
