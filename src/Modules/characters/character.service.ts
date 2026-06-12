@@ -594,6 +594,14 @@ export class CharacterService {
         where: { characterId },
       });
 
+      await tx.characterTrait.deleteMany({
+        where: { characterId },
+      });
+
+      await tx.tableMissionSubmission.deleteMany({
+        where: { characterId },
+      });
+
       if (character.inventoryId) {
         await tx.item.deleteMany({
           where: { inventoryId: character.inventoryId },

@@ -1,13 +1,25 @@
-import { CharacterReviewStatus, Prisma, TableMemberRole } from "@prisma/client";
+import {
+  CharacterReviewStatus,
+  Prisma,
+  TableMemberRole,
+  TableMissionSubmissionStatus,
+  TableTimelineEventType,
+} from "@prisma/client";
 import { randomInt } from "crypto";
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { CharacterService } from "../characters/character.service";
 import {
   CreateTableCharacterInput,
+  CreateCharacterTraitInput,
+  CreateMissionSubmissionInput,
   CreateTableInput,
+  CreateTableMissionInput,
+  CreateTimelineEventInput,
   JoinTableInput,
+  ReviewMissionSubmissionInput,
   ReviewTableCharacterInput,
+  UpdateTableMissionInput,
   UpsertTableWorldInput,
 } from "./table.types";
 
@@ -73,6 +85,20 @@ export class TableService {
     }
 
     throw new AppError(500, "Nao foi possivel gerar codigo da mesa.", "JOIN_CODE_GENERATION_FAILED");
+  }
+
+  static async createTableWithTimeline(userId: string, input: CreateTableInput) {
+    const table = await this.createTable(userId, input);
+
+    await this.createTimelineEventSafely({
+      tableId: table.id,
+      createdById: userId,
+      title: "Mesa criada",
+      description: `A mesa ${table.name} foi criada.`,
+      type: "STORY",
+    });
+
+    return table;
   }
 
   static async listTables(userId: string) {
@@ -253,7 +279,17 @@ export class TableService {
       throw new AppError(404, "Personagem da mesa nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
     }
 
-    return prisma.characterReview.upsert({
+    const existingReview = await prisma.characterReview.findUnique({
+      where: {
+        tableId_characterId: {
+          tableId,
+          characterId,
+        },
+      },
+      select: { status: true },
+    });
+
+    const review = await prisma.characterReview.upsert({
       where: {
         tableId_characterId: {
           tableId,
@@ -270,6 +306,303 @@ export class TableService {
         status: input.status as CharacterReviewStatus,
         masterFeedback: input.masterFeedback ?? null,
       },
+    });
+
+    if (
+      review.status === CharacterReviewStatus.APPROVED &&
+      existingReview?.status !== CharacterReviewStatus.APPROVED
+    ) {
+      await this.createTimelineEventSafely({
+        tableId,
+        characterId,
+        createdById: userId,
+        title: "Personagem aprovado",
+        description: "Um personagem foi aprovado para participar da mesa.",
+        type: "CHARACTER_APPROVED",
+      });
+    }
+
+    return review;
+  }
+
+  static async listCharacterTraits(userId: string, tableId: string, characterId: string) {
+    await this.ensureMembership(userId, tableId);
+    await this.ensureTableCharacter(tableId, characterId);
+
+    return prisma.characterTrait.findMany({
+      where: { tableId, characterId },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  static async createCharacterTrait(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    input: CreateCharacterTraitInput
+  ) {
+    await this.ensureMaster(userId, tableId);
+    await this.ensureTableCharacter(tableId, characterId);
+
+    return prisma.characterTrait.create({
+      data: {
+        tableId,
+        characterId,
+        type: input.type,
+        name: input.name,
+        description: input.description ?? null,
+        createdById: userId,
+      },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
+  static async deleteCharacterTrait(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    traitId: string
+  ) {
+    await this.ensureMaster(userId, tableId);
+    await this.ensureTableCharacter(tableId, characterId);
+
+    const trait = await prisma.characterTrait.findFirst({
+      where: {
+        id: traitId,
+        tableId,
+        characterId,
+      },
+      select: { id: true },
+    });
+
+    if (!trait) {
+      throw new AppError(404, "Trait nao encontrada para este personagem.", "CHARACTER_TRAIT_NOT_FOUND");
+    }
+
+    await prisma.characterTrait.delete({
+      where: { id: trait.id },
+    });
+
+    return { message: "Trait removida com sucesso." };
+  }
+
+  static async createMission(userId: string, tableId: string, input: CreateTableMissionInput) {
+    await this.ensureMaster(userId, tableId);
+
+    const mission = await prisma.tableMission.create({
+      data: {
+        tableId,
+        title: input.title,
+        description: input.description,
+        objective: input.objective ?? null,
+        isRequired: input.isRequired ?? true,
+        dueDate: input.dueDate ?? null,
+        createdById: userId,
+      },
+      include: this.missionInclude(),
+    });
+
+    await this.createTimelineEventSafely({
+      tableId,
+      createdById: userId,
+      title: "Missao criada",
+      description: mission.title,
+      type: "MISSION_CREATED",
+    });
+
+    return mission;
+  }
+
+  static async listMissions(userId: string, tableId: string) {
+    await this.ensureMembership(userId, tableId);
+
+    return prisma.tableMission.findMany({
+      where: { tableId },
+      include: this.missionInclude(),
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    });
+  }
+
+  static async getMission(userId: string, tableId: string, missionId: string) {
+    const membership = await this.ensureMembership(userId, tableId);
+    const mission = await this.getMissionForTable(tableId, missionId);
+
+    const submissionsWhere =
+      membership.role === TableMemberRole.MASTER ? undefined : { userId };
+
+    return prisma.tableMission.findUnique({
+      where: { id: mission.id },
+      include: {
+        ...this.missionInclude(),
+        submissions: {
+          where: submissionsWhere,
+          include: this.submissionInclude(),
+          orderBy: { createdAt: "desc" },
+        },
+      },
+    });
+  }
+
+  static async updateMission(
+    userId: string,
+    tableId: string,
+    missionId: string,
+    input: UpdateTableMissionInput
+  ) {
+    await this.ensureMaster(userId, tableId);
+    await this.getMissionForTable(tableId, missionId);
+
+    return prisma.tableMission.update({
+      where: { id: missionId },
+      data: {
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.objective !== undefined ? { objective: input.objective } : {}),
+        ...(input.isRequired !== undefined ? { isRequired: input.isRequired } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+      },
+      include: this.missionInclude(),
+    });
+  }
+
+  static async createMissionSubmission(
+    userId: string,
+    tableId: string,
+    missionId: string,
+    input: CreateMissionSubmissionInput
+  ) {
+    await this.ensureMembership(userId, tableId);
+    await this.getMissionForTable(tableId, missionId);
+    await this.ensureApprovedTableCharacter(userId, tableId, input.characterId);
+
+    return prisma.tableMissionSubmission.create({
+      data: {
+        missionId,
+        characterId: input.characterId,
+        userId,
+        content: input.content,
+      },
+      include: this.submissionInclude(),
+    });
+  }
+
+  static async listMissionSubmissions(userId: string, tableId: string, missionId: string) {
+    const membership = await this.ensureMembership(userId, tableId);
+    await this.getMissionForTable(tableId, missionId);
+
+    return prisma.tableMissionSubmission.findMany({
+      where: {
+        missionId,
+        ...(membership.role === TableMemberRole.MASTER ? {} : { userId }),
+      },
+      include: this.submissionInclude(),
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  static async reviewMissionSubmission(
+    userId: string,
+    tableId: string,
+    missionId: string,
+    submissionId: string,
+    input: ReviewMissionSubmissionInput
+  ) {
+    await this.ensureMaster(userId, tableId);
+    await this.getMissionForTable(tableId, missionId);
+
+    const submission = await prisma.tableMissionSubmission.findFirst({
+      where: {
+        id: submissionId,
+        missionId,
+        mission: {
+          tableId,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!submission) {
+      throw new AppError(404, "Submissao de missao nao encontrada.", "MISSION_SUBMISSION_NOT_FOUND");
+    }
+
+    const updatedSubmission = await prisma.tableMissionSubmission.update({
+      where: { id: submission.id },
+      data: {
+        status: input.status as TableMissionSubmissionStatus,
+        masterNote: input.masterNote ?? null,
+      },
+      include: this.submissionInclude(),
+    });
+
+    if (
+      updatedSubmission.status === TableMissionSubmissionStatus.APPROVED &&
+      submission.status !== TableMissionSubmissionStatus.APPROVED
+    ) {
+      await this.createTimelineEventSafely({
+        tableId,
+        characterId: updatedSubmission.characterId,
+        createdById: userId,
+        title: "Missao aprovada",
+        description: "Uma resposta de missao foi aprovada pelo mestre.",
+        type: "MISSION_APPROVED",
+      });
+    }
+
+    return updatedSubmission;
+  }
+
+  static async listTimelineEvents(userId: string, tableId: string) {
+    await this.ensureMembership(userId, tableId);
+
+    return prisma.tableTimelineEvent.findMany({
+      where: { tableId },
+      include: this.timelineEventInclude(),
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  static async createTimelineEvent(
+    userId: string,
+    tableId: string,
+    input: CreateTimelineEventInput
+  ) {
+    await this.ensureMaster(userId, tableId);
+
+    if (input.characterId) {
+      await this.ensureTableCharacter(tableId, input.characterId);
+    }
+
+    return prisma.tableTimelineEvent.create({
+      data: {
+        tableId,
+        characterId: input.characterId ?? null,
+        title: input.title,
+        description: input.description,
+        type: input.type,
+        createdById: userId,
+      },
+      include: this.timelineEventInclude(),
     });
   }
 
@@ -320,6 +653,157 @@ export class TableService {
     }
 
     return membership;
+  }
+
+  private static async ensureTableCharacter(tableId: string, characterId: string) {
+    const character = await prisma.character.findFirst({
+      where: {
+        id: characterId,
+        tableId,
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!character) {
+      throw new AppError(404, "Personagem da mesa nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
+    }
+
+    return character;
+  }
+
+  private static async ensureApprovedTableCharacter(
+    userId: string,
+    tableId: string,
+    characterId: string
+  ) {
+    const character = await prisma.character.findFirst({
+      where: {
+        id: characterId,
+        tableId,
+        userId,
+        reviews: {
+          some: {
+            tableId,
+            status: CharacterReviewStatus.APPROVED,
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!character) {
+      throw new AppError(
+        403,
+        "Envio exige personagem aprovado nesta mesa.",
+        "APPROVED_TABLE_CHARACTER_REQUIRED"
+      );
+    }
+
+    return character;
+  }
+
+  private static async getMissionForTable(tableId: string, missionId: string) {
+    const mission = await prisma.tableMission.findFirst({
+      where: {
+        id: missionId,
+        tableId,
+      },
+      select: { id: true },
+    });
+
+    if (!mission) {
+      throw new AppError(404, "Missao da mesa nao encontrada.", "TABLE_MISSION_NOT_FOUND");
+    }
+
+    return mission;
+  }
+
+  private static missionInclude() {
+    return {
+      createdBy: {
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+        },
+      },
+      _count: {
+        select: {
+          submissions: true,
+        },
+      },
+    } satisfies Prisma.TableMissionInclude;
+  }
+
+  private static submissionInclude() {
+    return {
+      user: {
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+        },
+      },
+      character: {
+        select: {
+          id: true,
+          name: true,
+          tableId: true,
+          class: true,
+        },
+      },
+    } satisfies Prisma.TableMissionSubmissionInclude;
+  }
+
+  private static timelineEventInclude() {
+    return {
+      createdBy: {
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+        },
+      },
+      character: {
+        select: {
+          id: true,
+          name: true,
+          tableId: true,
+          class: true,
+        },
+      },
+    } satisfies Prisma.TableTimelineEventInclude;
+  }
+
+  private static async createTimelineEventSafely(input: {
+    tableId: string;
+    characterId?: string;
+    title: string;
+    description: string;
+    type: TableTimelineEventType;
+    createdById: string;
+  }) {
+    try {
+      await prisma.tableTimelineEvent.create({
+        data: {
+          tableId: input.tableId,
+          characterId: input.characterId ?? null,
+          title: input.title,
+          description: input.description,
+          type: input.type,
+          createdById: input.createdById,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to create table timeline event", {
+        tableId: input.tableId,
+        type: input.type,
+        error,
+      });
+    }
   }
 
   private static async generateUniqueJoinCode() {
