@@ -585,6 +585,251 @@ As acoes de gameplay retornam em `result` um formato proximo de:
 }
 ```
 
+## Mesas RPG assincronas
+
+Todas as rotas abaixo exigem:
+- `Authorization: Bearer <token>`
+- usuario participante da mesa para leitura/interacao
+- `MASTER` para criacao/edicao de mundo, traits, missoes, reviews e eventos manuais de timeline
+
+### Criar mesa
+
+- `POST /api/v1/tables`
+
+Body:
+
+```json
+{
+  "name": "Cronicas de Eldoria"
+}
+```
+
+Comportamento:
+- cria uma mesa com `joinCode` unico
+- adiciona o criador como membro `MASTER`
+- limite de jogadores `PLAYER`: 8
+- cria evento automatico na timeline
+
+### Listar mesas do usuario
+
+- `GET /api/v1/tables`
+
+### Buscar mesa
+
+- `GET /api/v1/tables/:id`
+
+### Entrar em mesa
+
+- `POST /api/v1/tables/join`
+
+Body:
+
+```json
+{
+  "joinCode": "AB12CD"
+}
+```
+
+Regras:
+- usuario nao pode entrar duas vezes na mesma mesa
+- mesa aceita ate 8 membros com role `PLAYER`
+
+### Mundo da mesa
+
+- `GET /api/v1/tables/:tableId/world`
+- `PUT /api/v1/tables/:tableId/world`
+
+Body do `PUT`:
+
+```json
+{
+  "campaignTitle": "A Queda da Lua Verde",
+  "summary": "Um grupo investiga uma praga arcana que avanca pelo reino.",
+  "tone": "dark fantasy",
+  "rules": {
+    "postingFrequency": "3 vezes por semana",
+    "dicePolicy": "mestre resolve rolagens importantes"
+  },
+  "characterCreationCriteria": {
+    "startingLevel": 1,
+    "allowedClasses": ["Warrior", "Mage", "Rogue"]
+  }
+}
+```
+
+Regras:
+- qualquer membro visualiza
+- somente `MASTER` cria ou atualiza
+
+### Personagens da mesa
+
+- `POST /api/v1/tables/:tableId/characters`
+- `GET /api/v1/tables/:tableId/characters`
+- `PATCH /api/v1/tables/:tableId/characters/:characterId/review`
+
+Body para criar personagem:
+
+```json
+{
+  "name": "Lyra",
+  "classId": "uuid-da-classe"
+}
+```
+
+Comportamento:
+- reutiliza a criacao normal de personagem
+- vincula o personagem a `tableId`
+- cria review com status `PENDING`
+
+Body para review:
+
+```json
+{
+  "status": "APPROVED",
+  "masterFeedback": "Aprovada para iniciar na Vila Cinzenta."
+}
+```
+
+Status aceitos:
+- `APPROVED`
+- `REJECTED`
+- `NEEDS_CHANGES`
+
+Ao aprovar um personagem, o backend cria evento automatico `CHARACTER_APPROVED` na timeline. Falha nesse evento e apenas logada e nao cancela a aprovacao.
+
+### Traits de personagem
+
+- `GET /api/v1/tables/:tableId/characters/:characterId/traits`
+- `POST /api/v1/tables/:tableId/characters/:characterId/traits`
+- `DELETE /api/v1/tables/:tableId/characters/:characterId/traits/:traitId`
+
+Body:
+
+```json
+{
+  "type": "POSITIVE",
+  "name": "Aliado da Guarda",
+  "description": "Recebe ajuda de guardas locais em cidades do reino."
+}
+```
+
+Tipos aceitos:
+- `POSITIVE`
+- `NEGATIVE`
+- `NEUTRAL`
+
+Regras:
+- todos os membros podem listar
+- somente `MASTER` cria ou remove
+- `characterId` deve pertencer a mesma mesa
+
+### Missoes da mesa
+
+- `POST /api/v1/tables/:tableId/missions`
+- `GET /api/v1/tables/:tableId/missions`
+- `GET /api/v1/tables/:tableId/missions/:missionId`
+- `PATCH /api/v1/tables/:tableId/missions/:missionId`
+
+Body de criacao:
+
+```json
+{
+  "title": "Investigar o Farol",
+  "description": "Descubram por que o farol deixou de emitir luz.",
+  "objective": "Enviar um plano de entrada e investigacao.",
+  "isRequired": true,
+  "dueDate": "2026-07-01T23:59:59.000Z"
+}
+```
+
+Body de atualizacao:
+
+```json
+{
+  "status": "COMPLETED",
+  "objective": "Relatar o que foi encontrado no subsolo."
+}
+```
+
+Status de missao:
+- `ACTIVE`
+- `COMPLETED`
+- `ARCHIVED`
+
+Regras:
+- qualquer membro lista e visualiza
+- somente `MASTER` cria ou atualiza
+- ao criar missao, o backend cria evento automatico `MISSION_CREATED` na timeline
+
+### Submissoes de missao
+
+- `POST /api/v1/tables/:tableId/missions/:missionId/submissions`
+- `GET /api/v1/tables/:tableId/missions/:missionId/submissions`
+- `PATCH /api/v1/tables/:tableId/missions/:missionId/submissions/:submissionId/review`
+
+Body para enviar resposta:
+
+```json
+{
+  "characterId": "uuid-do-personagem-aprovado",
+  "content": "Lyra observa o farol a distancia e procura marcas recentes perto da porta."
+}
+```
+
+Body para review:
+
+```json
+{
+  "status": "APPROVED",
+  "masterNote": "A abordagem revelou pegadas recentes e uma chave quebrada."
+}
+```
+
+Status de submissao:
+- `SUBMITTED`
+- `APPROVED`
+- `REJECTED`
+- `NEEDS_CHANGES`
+
+Regras:
+- jogador so envia resposta com personagem aprovado na mesa
+- `missionId` e `characterId` precisam pertencer a mesma mesa
+- `MASTER` ve todas as submissoes
+- `PLAYER` ve apenas as proprias
+- ao aprovar submissao, o backend cria evento automatico `MISSION_APPROVED` na timeline
+
+### Timeline da campanha
+
+- `GET /api/v1/tables/:tableId/timeline`
+- `POST /api/v1/tables/:tableId/timeline`
+
+Body para evento manual:
+
+```json
+{
+  "characterId": "uuid-opcional-do-personagem",
+  "title": "Resumo da sessao 1",
+  "description": "O grupo chegou a Vila Cinzenta e encontrou o primeiro sinal da praga.",
+  "type": "SESSION_SUMMARY"
+}
+```
+
+Tipos aceitos:
+- `STORY`
+- `MISSION_CREATED`
+- `MISSION_APPROVED`
+- `CHARACTER_APPROVED`
+- `REWARD`
+- `MASTER_NOTE`
+- `SESSION_SUMMARY`
+
+Regras:
+- membros da mesa visualizam eventos
+- somente `MASTER` cria eventos manuais
+- eventos retornam ordenados por `createdAt`
+- se `characterId` for enviado, ele deve pertencer a mesa
+- eventos automaticos sao criados em criacao da mesa, aprovacao de personagem, criacao de missao e aprovacao de submissao
+
 ## Admin
 
 Todas as rotas abaixo exigem:
@@ -1037,6 +1282,21 @@ Se definir `SEED_ADMIN_EMAIL` no ambiente e esse usuario ja existir, o seed prom
 ## Resumo para Front
 
 Rotas novas ou relevantes para a UI atual:
+- `POST /api/v1/tables`
+- `POST /api/v1/tables/join`
+- `GET /api/v1/tables`
+- `GET /api/v1/tables/:tableId/world`
+- `PUT /api/v1/tables/:tableId/world`
+- `POST /api/v1/tables/:tableId/characters`
+- `GET /api/v1/tables/:tableId/characters`
+- `PATCH /api/v1/tables/:tableId/characters/:characterId/review`
+- `GET /api/v1/tables/:tableId/characters/:characterId/traits`
+- `POST /api/v1/tables/:tableId/characters/:characterId/traits`
+- `POST /api/v1/tables/:tableId/missions`
+- `GET /api/v1/tables/:tableId/missions`
+- `POST /api/v1/tables/:tableId/missions/:missionId/submissions`
+- `GET /api/v1/tables/:tableId/timeline`
+- `POST /api/v1/tables/:tableId/timeline`
 - `GET /api/v1/shop/market/characters/:characterId`
 - `POST /api/v1/shop/market/purchases`
 - `POST /api/v1/shop/market/sales`
