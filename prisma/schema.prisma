@@ -78,6 +78,47 @@ enum TradeAssetType {
   EQUIPMENT
 }
 
+enum TableMemberRole {
+  MASTER
+  PLAYER
+}
+
+enum CharacterReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_CHANGES
+}
+
+enum CharacterTraitType {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+enum TableMissionStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum TableMissionSubmissionStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  NEEDS_CHANGES
+}
+
+enum TableTimelineEventType {
+  STORY
+  MISSION_CREATED
+  MISSION_APPROVED
+  CHARACTER_APPROVED
+  REWARD
+  MASTER_NOTE
+  SESSION_SUMMARY
+}
+
 model User {
   id            String         @id @default(uuid())
   nome          String
@@ -87,6 +128,12 @@ model User {
   theme         String?
   characters    Character[]    @relation("UserToCharacter")
   paymentOrders PaymentOrder[]
+  masteredTables Table[]       @relation("TableMaster")
+  tableMembers   TableMember[]
+  createdCharacterTraits CharacterTrait[] @relation("CharacterTraitCreator")
+  createdTableMissions   TableMission[]   @relation("TableMissionCreator")
+  tableMissionSubmissions TableMissionSubmission[]
+  tableTimelineEvents TableTimelineEvent[] @relation("TableTimelineEventCreator")
 }
 
 model Character {
@@ -107,6 +154,7 @@ model Character {
   avatarId       String?
   titleId        String?
   bannerId       String?
+  tableId        String?
   posX           Float?
   posY           Float?
   posZ           Float?
@@ -115,6 +163,7 @@ model Character {
   createdAt      DateTime       @default(now())
 
   user          User           @relation("UserToCharacter", fields: [userId], references: [id])
+  table         Table?         @relation(fields: [tableId], references: [id])
   inventory     Inventory?     @relation(fields: [inventoryId], references: [id])
   class         Class          @relation("ClassToCharacter", fields: [classId], references: [id])
   transactions  Transaction[]
@@ -129,6 +178,12 @@ model Character {
   pvpMatchesAsOpponent  PvpMatch[] @relation("PvpMatchOpponent")
   pvpWinsAsWinner       PvpMatch[] @relation("PvpMatchWinner")
   pvpLossesAsLoser      PvpMatch[] @relation("PvpMatchLoser")
+  reviews               CharacterReview[]
+  traits                CharacterTrait[]
+  tableMissionSubmissions TableMissionSubmission[]
+  timelineEvents        TableTimelineEvent[]
+
+  @@index([tableId, createdAt])
 }
 
 model Inventory {
@@ -489,4 +544,149 @@ model PvpMatch {
 
   @@index([createdAt])
   @@index([winnerCharacterId, createdAt])
+}
+
+model Table {
+  id          String        @id @default(uuid())
+  masterUserId String
+  name        String
+  joinCode    String        @unique
+  maxPlayers  Int           @default(8)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  master  User          @relation("TableMaster", fields: [masterUserId], references: [id])
+  members TableMember[]
+  world   TableWorld?
+  characters Character[]
+  characterReviews CharacterReview[]
+  characterTraits CharacterTrait[]
+  missions TableMission[]
+  timelineEvents TableTimelineEvent[]
+
+  @@index([masterUserId, createdAt])
+}
+
+model TableMember {
+  id        String          @id @default(uuid())
+  tableId   String
+  userId    String
+  role      TableMemberRole @default(PLAYER)
+  createdAt DateTime        @default(now())
+
+  table Table @relation(fields: [tableId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([tableId, userId])
+  @@index([userId, createdAt])
+  @@index([tableId, role])
+}
+
+model TableWorld {
+  id                        String   @id @default(uuid())
+  tableId                   String   @unique
+  campaignTitle             String
+  summary                   String
+  tone                      String?
+  rules                     Json?
+  characterCreationCriteria Json?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  table Table @relation(fields: [tableId], references: [id])
+}
+
+model CharacterReview {
+  id             String                @id @default(uuid())
+  tableId        String
+  characterId    String
+  status         CharacterReviewStatus @default(PENDING)
+  masterFeedback String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  table     Table     @relation(fields: [tableId], references: [id])
+  character Character @relation(fields: [characterId], references: [id])
+
+  @@unique([tableId, characterId])
+  @@index([tableId, status, createdAt])
+  @@index([characterId])
+}
+
+model CharacterTrait {
+  id          String             @id @default(uuid())
+  characterId String
+  tableId     String
+  type        CharacterTraitType
+  name        String
+  description String?
+  createdById String
+  createdAt   DateTime           @default(now())
+
+  character Character @relation(fields: [characterId], references: [id])
+  table     Table     @relation(fields: [tableId], references: [id])
+  createdBy User      @relation("CharacterTraitCreator", fields: [createdById], references: [id])
+
+  @@index([tableId, characterId, createdAt])
+  @@index([createdById])
+}
+
+model TableMission {
+  id          String             @id @default(uuid())
+  tableId     String
+  title       String
+  description String
+  objective   String?
+  isRequired  Boolean            @default(true)
+  status      TableMissionStatus @default(ACTIVE)
+  dueDate     DateTime?
+  createdById String
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  table       Table                    @relation(fields: [tableId], references: [id])
+  createdBy   User                     @relation("TableMissionCreator", fields: [createdById], references: [id])
+  submissions TableMissionSubmission[]
+
+  @@index([tableId, status, createdAt])
+  @@index([createdById])
+}
+
+model TableMissionSubmission {
+  id         String                       @id @default(uuid())
+  missionId  String
+  characterId String
+  userId     String
+  content    String
+  status     TableMissionSubmissionStatus @default(SUBMITTED)
+  masterNote String?
+  createdAt  DateTime                     @default(now())
+  updatedAt  DateTime                     @updatedAt
+
+  mission   TableMission @relation(fields: [missionId], references: [id])
+  character Character    @relation(fields: [characterId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@index([missionId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([characterId, createdAt])
+}
+
+model TableTimelineEvent {
+  id          String                 @id @default(uuid())
+  tableId     String
+  characterId String?
+  title       String
+  description String
+  type        TableTimelineEventType
+  createdById String
+  createdAt   DateTime               @default(now())
+
+  table     Table      @relation(fields: [tableId], references: [id])
+  character Character? @relation(fields: [characterId], references: [id])
+  createdBy User       @relation("TableTimelineEventCreator", fields: [createdById], references: [id])
+
+  @@index([tableId, createdAt])
+  @@index([characterId, createdAt])
+  @@index([createdById])
 }

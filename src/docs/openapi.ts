@@ -26,6 +26,34 @@ const combatSessionIdPathParam = {
   schema: { type: "string" },
 } as const;
 
+const tableIdPathParam = {
+  name: "tableId",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
+const missionIdPathParam = {
+  name: "missionId",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
+const submissionIdPathParam = {
+  name: "submissionId",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
+const traitIdPathParam = {
+  name: "traitId",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
 const authSecurity = [{ bearerAuth: [] }] as const;
 
 export const openApiDocument = {
@@ -51,6 +79,7 @@ export const openApiDocument = {
     { name: "Shop", description: "Loja e pagamentos" },
     { name: "Trades", description: "Trocas assíncronas entre jogadores" },
     { name: "PvP", description: "Duelo entre jogadores e ranking PvP" },
+    { name: "Tables", description: "Mesas RPG assincronas, mundo, personagens, missoes e timeline" },
   ],
   components: {
     securitySchemes: {
@@ -1099,6 +1128,115 @@ export const openApiDocument = {
           isActive: { type: "boolean" },
         },
       },
+      CreateTableRequest: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: { type: "string", example: "Cronicas de Eldoria" },
+        },
+      },
+      JoinTableRequest: {
+        type: "object",
+        required: ["joinCode"],
+        properties: {
+          joinCode: { type: "string", example: "AB12CD" },
+        },
+      },
+      TableWorldRequest: {
+        type: "object",
+        required: ["campaignTitle", "summary"],
+        properties: {
+          campaignTitle: { type: "string" },
+          summary: { type: "string" },
+          tone: { type: "string", nullable: true },
+          rules: { type: "object", nullable: true },
+          characterCreationCriteria: { type: "object", nullable: true },
+        },
+      },
+      TableCharacterRequest: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: { type: "string" },
+          classId: { type: "string" },
+        },
+      },
+      TableCharacterReviewRequest: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: { type: "string", enum: ["APPROVED", "REJECTED", "NEEDS_CHANGES"] },
+          masterFeedback: { type: "string", nullable: true },
+        },
+      },
+      CharacterTraitRequest: {
+        type: "object",
+        required: ["type", "name"],
+        properties: {
+          type: { type: "string", enum: ["POSITIVE", "NEGATIVE", "NEUTRAL"] },
+          name: { type: "string" },
+          description: { type: "string", nullable: true },
+        },
+      },
+      TableMissionRequest: {
+        type: "object",
+        required: ["title", "description"],
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          objective: { type: "string", nullable: true },
+          isRequired: { type: "boolean", default: true },
+          dueDate: { type: "string", format: "date-time", nullable: true },
+        },
+      },
+      TableMissionUpdateRequest: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          objective: { type: "string", nullable: true },
+          isRequired: { type: "boolean" },
+          status: { type: "string", enum: ["ACTIVE", "COMPLETED", "ARCHIVED"] },
+          dueDate: { type: "string", format: "date-time", nullable: true },
+        },
+      },
+      TableMissionSubmissionRequest: {
+        type: "object",
+        required: ["characterId", "content"],
+        properties: {
+          characterId: { type: "string" },
+          content: { type: "string" },
+        },
+      },
+      TableMissionSubmissionReviewRequest: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: { type: "string", enum: ["APPROVED", "REJECTED", "NEEDS_CHANGES"] },
+          masterNote: { type: "string", nullable: true },
+        },
+      },
+      TableTimelineEventRequest: {
+        type: "object",
+        required: ["title", "description", "type"],
+        properties: {
+          characterId: { type: "string", nullable: true },
+          title: { type: "string" },
+          description: { type: "string" },
+          type: {
+            type: "string",
+            enum: [
+              "STORY",
+              "MISSION_CREATED",
+              "MISSION_APPROVED",
+              "CHARACTER_APPROVED",
+              "REWARD",
+              "MASTER_NOTE",
+              "SESSION_SUMMARY",
+            ],
+          },
+        },
+      },
       MetaVersionResponse: {
         type: "object",
         properties: {
@@ -1425,6 +1563,53 @@ export const openApiDocument = {
     "/api/v1/admin/shop-products/{id}": {
       patch: { tags: ["Admin"], summary: "Atualizar produto da loja", security: authSecurity, parameters: [idPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AdminShopProductUpdateRequest" } } } }, responses: { "200": { description: "Produto atualizado" }, "400": { $ref: "#/components/responses/BadRequest" }, "404": { $ref: "#/components/responses/NotFound" } } },
       delete: { tags: ["Admin"], summary: "Excluir produto da loja", security: authSecurity, parameters: [idPathParam], responses: { "200": { description: "Produto excluido" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables": {
+      get: { tags: ["Tables"], summary: "Listar mesas do usuario", security: authSecurity, responses: { "200": { description: "Mesas retornadas" }, "401": { $ref: "#/components/responses/Unauthorized" } } },
+      post: { tags: ["Tables"], summary: "Criar mesa RPG", description: "Cria a mesa, adiciona o criador como MASTER e gera evento automatico na timeline.", security: authSecurity, requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreateTableRequest" } } } }, responses: { "201": { description: "Mesa criada" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" } } },
+    },
+    "/api/v1/tables/join": {
+      post: { tags: ["Tables"], summary: "Entrar em mesa por codigo", security: authSecurity, requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/JoinTableRequest" } } } }, responses: { "200": { description: "Entrada realizada" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables/{id}": {
+      get: { tags: ["Tables"], summary: "Obter mesa", security: authSecurity, parameters: [idPathParam], responses: { "200": { description: "Mesa retornada" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/world": {
+      get: { tags: ["Tables"], summary: "Obter mundo da mesa", description: "Qualquer membro da mesa pode visualizar.", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Mundo retornado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+      put: { tags: ["Tables"], summary: "Criar ou atualizar mundo da mesa", description: "Somente MASTER pode criar ou atualizar.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableWorldRequest" } } } }, responses: { "200": { description: "Mundo salvo" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+    },
+    "/api/v1/tables/{tableId}/characters": {
+      get: { tags: ["Tables"], summary: "Listar personagens da mesa", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Personagens retornados" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+      post: { tags: ["Tables"], summary: "Criar personagem na mesa", description: "Cria personagem vinculado a tableId e review PENDING.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterRequest" } } } }, responses: { "201": { description: "Personagem enviado para revisao" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/review": {
+      patch: { tags: ["Tables"], summary: "Revisar personagem da mesa", description: "Somente MASTER. Ao aprovar, cria evento automatico CHARACTER_APPROVED na timeline.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterReviewRequest" } } } }, responses: { "200": { description: "Review atualizada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/traits": {
+      get: { tags: ["Tables"], summary: "Listar traits do personagem", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Traits retornadas" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+      post: { tags: ["Tables"], summary: "Criar trait do personagem", description: "Somente MASTER.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CharacterTraitRequest" } } } }, responses: { "201": { description: "Trait criada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/traits/{traitId}": {
+      delete: { tags: ["Tables"], summary: "Remover trait do personagem", description: "Somente MASTER.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam, traitIdPathParam], responses: { "200": { description: "Trait removida" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/missions": {
+      get: { tags: ["Tables"], summary: "Listar missoes da mesa", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Missoes retornadas" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+      post: { tags: ["Tables"], summary: "Criar missao da mesa", description: "Somente MASTER. Cria evento automatico MISSION_CREATED na timeline.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableMissionRequest" } } } }, responses: { "201": { description: "Missao criada" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+    },
+    "/api/v1/tables/{tableId}/missions/{missionId}": {
+      get: { tags: ["Tables"], summary: "Ver missao da mesa", description: "MASTER ve todas as submissions; PLAYER ve somente as proprias.", security: authSecurity, parameters: [tableIdPathParam, missionIdPathParam], responses: { "200": { description: "Missao retornada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+      patch: { tags: ["Tables"], summary: "Atualizar missao da mesa", description: "Somente MASTER.", security: authSecurity, parameters: [tableIdPathParam, missionIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableMissionUpdateRequest" } } } }, responses: { "200": { description: "Missao atualizada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/missions/{missionId}/submissions": {
+      get: { tags: ["Tables"], summary: "Listar submissions da missao", description: "MASTER ve todas; PLAYER ve somente as proprias.", security: authSecurity, parameters: [tableIdPathParam, missionIdPathParam], responses: { "200": { description: "Submissions retornadas" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+      post: { tags: ["Tables"], summary: "Enviar resposta de missao", description: "PLAYER precisa usar personagem aprovado da mesma mesa.", security: authSecurity, parameters: [tableIdPathParam, missionIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableMissionSubmissionRequest" } } } }, responses: { "201": { description: "Submission criada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/missions/{missionId}/submissions/{submissionId}/review": {
+      patch: { tags: ["Tables"], summary: "Revisar submission da missao", description: "Somente MASTER. Ao aprovar, cria evento automatico MISSION_APPROVED na timeline.", security: authSecurity, parameters: [tableIdPathParam, missionIdPathParam, submissionIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableMissionSubmissionReviewRequest" } } } }, responses: { "200": { description: "Submission revisada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/timeline": {
+      get: { tags: ["Tables"], summary: "Listar timeline da mesa", description: "Eventos ordenados por createdAt.", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Eventos retornados" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+      post: { tags: ["Tables"], summary: "Criar evento manual de timeline", description: "Somente MASTER. Se characterId for enviado, ele deve pertencer a mesa.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableTimelineEventRequest" } } } }, responses: { "201": { description: "Evento criado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
     },
     "/api/v1/rewards/claim": { post: { tags: ["Rewards"], summary: "Resgatar recompensa", security: authSecurity, requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ClaimRewardRequest" } } } }, responses: { "201": { description: "Recompensa resgatada" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "409": { $ref: "#/components/responses/Conflict" } } } },
     "/api/v1/rewards/characters/{characterId}": { get: { tags: ["Rewards"], summary: "Listar rewards", security: authSecurity, parameters: [characterIdPathParam], responses: { "200": { description: "Claims retornadas" }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } } },

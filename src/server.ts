@@ -10,6 +10,7 @@ import gameplayRoutes from "./Modules/gameplay/gameplay.routes";
 import inventoryRoutes from "./Modules/inventory/inventory.routes";
 import rewardsRoutes from "./Modules/rewards/rewards.routes";
 import shopRoutes from "./Modules/shop/shop.routes";
+import tableRoutes from "./Modules/tables/table.routes";
 import tradeRoutes from "./Modules/trades/trade.routes";
 import transactionRoutes from "./Modules/transactions/transaction.routes";
 import userRoutes from "./Modules/users/user.routers";
@@ -68,6 +69,7 @@ app.use("/api/v1/inventory", inventoryRoutes);
 app.use("/api/v1/rewards", rewardsRoutes);
 app.use("/api/v1/transactions", transactionRoutes);
 app.use("/api/v1/shop", shopRoutes);
+app.use("/api/v1/tables", tableRoutes);
 app.use("/api/v1/trades", tradeRoutes);
 app.use("/api/v1/pvp", pvpRoutes);
 
