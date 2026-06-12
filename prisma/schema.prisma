@@ -78,6 +78,11 @@ enum TradeAssetType {
   EQUIPMENT
 }
 
+enum TableMemberRole {
+  MASTER
+  PLAYER
+}
+
 model User {
   id            String         @id @default(uuid())
   nome          String
@@ -87,6 +92,8 @@ model User {
   theme         String?
   characters    Character[]    @relation("UserToCharacter")
   paymentOrders PaymentOrder[]
+  masteredTables Table[]       @relation("TableMaster")
+  tableMembers   TableMember[]
 }
 
 model Character {
@@ -489,4 +496,49 @@ model PvpMatch {
 
   @@index([createdAt])
   @@index([winnerCharacterId, createdAt])
+}
+
+model Table {
+  id          String        @id @default(uuid())
+  masterUserId String
+  name        String
+  joinCode    String        @unique
+  maxPlayers  Int           @default(8)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  master  User          @relation("TableMaster", fields: [masterUserId], references: [id])
+  members TableMember[]
+  world   TableWorld?
+
+  @@index([masterUserId, createdAt])
+}
+
+model TableMember {
+  id        String          @id @default(uuid())
+  tableId   String
+  userId    String
+  role      TableMemberRole @default(PLAYER)
+  createdAt DateTime        @default(now())
+
+  table Table @relation(fields: [tableId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([tableId, userId])
+  @@index([userId, createdAt])
+  @@index([tableId, role])
+}
+
+model TableWorld {
+  id                        String   @id @default(uuid())
+  tableId                   String   @unique
+  campaignTitle             String
+  summary                   String
+  tone                      String?
+  rules                     Json?
+  characterCreationCriteria Json?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  table Table @relation(fields: [tableId], references: [id])
 }
