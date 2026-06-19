@@ -10,7 +10,8 @@ const buckets = new Map<string, Bucket>();
 
 export const createRateLimiter = (maxRequests: number, windowMs: number) => {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    const key = `${req.ip}:${req.route?.path ?? req.path}`;
+    const actor = req.user?.id ?? req.ip;
+    const key = `${actor}:${req.baseUrl}:${req.route?.path ?? req.path}`;
     const now = Date.now();
     const current = buckets.get(key);
 

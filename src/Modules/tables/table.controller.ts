@@ -23,6 +23,13 @@ export const getTable = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, 200, { table });
 });
 
+export const getMasterOverview = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const overview = await TableService.getMasterOverview(userId, tableId);
+  sendSuccess(res, 200, { overview });
+});
+
 export const joinTable = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const table = await TableService.joinTable(userId, req.body);

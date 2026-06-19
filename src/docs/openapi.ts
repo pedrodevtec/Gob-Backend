@@ -1176,6 +1176,167 @@ export const openApiDocument = {
           playerCount: { type: "integer" },
         },
       },
+      MasterOverviewResponse: {
+        type: "object",
+        required: [
+          "table",
+          "world",
+          "members",
+          "characters",
+          "missions",
+          "submissions",
+          "timeline",
+          "onboardingChecklist",
+          "nextRecommendedAction",
+        ],
+        properties: {
+          table: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              description: { type: "string" },
+              joinCode: { type: "string" },
+              code: { type: "string" },
+              maxPlayers: { type: "integer" },
+              status: { type: "string", enum: ["ACTIVE", "ARCHIVED"] },
+              membersCount: { type: "integer" },
+              currentUserRole: { type: "string", enum: ["MASTER"] },
+              isMaster: { type: "boolean", enum: [true] },
+            },
+          },
+          world: {
+            type: "object",
+            properties: {
+              hasWorld: { type: "boolean" },
+              worldId: { type: "string", nullable: true },
+              worldTitle: { type: "string", nullable: true },
+              hasSummary: { type: "boolean" },
+              hasRules: { type: "boolean" },
+              hasCharacterCriteria: { type: "boolean" },
+            },
+          },
+          members: {
+            type: "object",
+            properties: {
+              totalMembers: { type: "integer" },
+              totalPlayers: { type: "integer" },
+              hasPlayers: { type: "boolean" },
+            },
+          },
+          characters: {
+            type: "object",
+            properties: {
+              totalCharacters: { type: "integer" },
+              pendingCharacters: { type: "integer" },
+              approvedCharacters: { type: "integer" },
+              rejectedCharacters: { type: "integer" },
+              needsChangesCharacters: { type: "integer" },
+            },
+          },
+          missions: {
+            type: "object",
+            properties: {
+              totalMissions: { type: "integer" },
+              activeMissions: { type: "integer" },
+              hasActiveMission: { type: "boolean" },
+              latestMission: { type: "object", nullable: true },
+            },
+          },
+          submissions: {
+            type: "object",
+            properties: {
+              pendingSubmissions: { type: "integer" },
+              reviewedSubmissions: { type: "integer" },
+            },
+          },
+          timeline: {
+            type: "object",
+            properties: {
+              totalEvents: { type: "integer" },
+              hasTimeline: { type: "boolean" },
+              latestEvent: { type: "object", nullable: true },
+            },
+          },
+          onboardingChecklist: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                key: { type: "string" },
+                label: { type: "string" },
+                done: { type: "boolean" },
+              },
+            },
+          },
+          nextRecommendedAction: {
+            type: "object",
+            properties: {
+              key: { type: "string" },
+              title: { type: "string" },
+              description: { type: "string" },
+              ctaLabel: { type: "string" },
+            },
+          },
+        },
+      },
+      AiWorldSummaryRequest: {
+        type: "object",
+        properties: {
+          prompt: { type: "string" },
+          currentWorld: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              summary: { type: "string" },
+              tone: { type: "string" },
+              rules: { type: "string" },
+              characterCriteria: { type: "string" },
+            },
+          },
+        },
+      },
+      AiMissionIdeasRequest: {
+        type: "object",
+        required: ["worldSummary", "characters"],
+        properties: {
+          theme: { type: "string" },
+          difficulty: { type: "string" },
+          worldSummary: { type: "string" },
+          activeArc: { type: "string" },
+          characters: {
+            type: "array",
+            maxItems: 10,
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                className: { type: "string" },
+                summary: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+      AiTraitsRequest: {
+        type: "object",
+        required: ["characterId"],
+        properties: {
+          characterId: { type: "string" },
+          instruction: { type: "string" },
+        },
+      },
+      AiTimelineSummaryRequest: {
+        type: "object",
+        required: ["notes", "eventType"],
+        properties: {
+          notes: { type: "string" },
+          eventType: {
+            type: "string",
+            enum: ["SESSION_SUMMARY", "MASTER_NOTE"],
+          },
+        },
+      },
       TableWorldRequest: {
         type: "object",
         required: ["campaignTitle", "summary"],
@@ -1607,6 +1768,21 @@ export const openApiDocument = {
     },
     "/api/v1/tables/{id}": {
       get: { tags: ["Tables"], summary: "Obter mesa", security: authSecurity, parameters: [idPathParam], responses: { "200": { description: "Mesa retornada" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/master/overview": {
+      get: { tags: ["Tables"], summary: "Obter overview consolidado do painel do Mestre", description: "Somente o MASTER ativo da mesa ou o usuario indicado por masterId. ADMIN global nao concede acesso.", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Overview retornado", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, overview: { $ref: "#/components/schemas/MasterOverviewResponse" } } } } } }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/ai/world-summary": {
+      post: { tags: ["Tables AI"], summary: "Sugerir rascunho do mundo", description: "Somente MASTER. Retorna sugestoes e nao salva dados.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AiWorldSummaryRequest" } } } }, responses: { "200": { description: "Sugestao estruturada retornada" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "503": { description: "AI assistant is not configured." } } },
+    },
+    "/api/v1/tables/{tableId}/ai/mission-ideas": {
+      post: { tags: ["Tables AI"], summary: "Sugerir ideias de missao", description: "Somente MASTER. Retorna ate 3 ideias e nao salva dados.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AiMissionIdeasRequest" } } } }, responses: { "200": { description: "Ideias estruturadas retornadas" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "503": { description: "AI assistant is not configured." } } },
+    },
+    "/api/v1/tables/{tableId}/ai/traits": {
+      post: { tags: ["Tables AI"], summary: "Sugerir traits de personagem", description: "Somente MASTER. O backend usa apenas contexto da mesa, personagem e traits existentes. Nao salva dados.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AiTraitsRequest" } } } }, responses: { "200": { description: "Traits estruturadas retornadas" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "503": { description: "AI assistant is not configured." } } },
+    },
+    "/api/v1/tables/{tableId}/ai/timeline-summary": {
+      post: { tags: ["Tables AI"], summary: "Sugerir resumo para timeline", description: "Somente MASTER. Retorna titulo e descricao sugeridos sem salvar dados.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AiTimelineSummaryRequest" } } } }, responses: { "200": { description: "Resumo estruturado retornado" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "503": { description: "AI assistant is not configured." } } },
     },
     "/api/v1/tables/{tableId}/world": {
       get: { tags: ["Tables"], summary: "Obter mundo da mesa", description: "Qualquer membro da mesa pode visualizar.", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Mundo retornado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },

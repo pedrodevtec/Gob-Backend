@@ -2,6 +2,7 @@ import { Router } from "express";
 import auth from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
 import { validateCreateCharacter } from "../characters/character.schema";
+import aiRoutes from "../ai/ai.routes";
 import {
   createCharacterTrait,
   createMissionSubmission,
@@ -11,6 +12,7 @@ import {
   createTimelineEvent,
   deleteCharacterTrait,
   getTable,
+  getMasterOverview,
   getTableMission,
   getTableWorld,
   joinTable,
@@ -40,12 +42,14 @@ import {
 
 const router = Router();
 
+router.use("/:tableId/ai", aiRoutes);
 router.use(auth);
 
 router.post("/", validate(validateCreateTable), createTable);
 router.get("/", listTables);
 router.get("/:id", getTable);
 router.post("/join", validate(validateJoinTable), joinTable);
+router.get("/:tableId/master/overview", getMasterOverview);
 router.post("/:tableId/characters", validate(validateCreateCharacter), createTableCharacter);
 router.get("/:tableId/characters", listTableCharacters);
 router.patch(

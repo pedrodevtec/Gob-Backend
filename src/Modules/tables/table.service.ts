@@ -12,6 +12,7 @@ import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { CharacterService } from "../characters/character.service";
 import { permissionDebug } from "../../utils/permissionDebug";
+import { buildMasterOverviewGuidance } from "./table.overview";
 import {
   CreateTableCharacterInput,
   CreateCharacterTraitInput,
@@ -184,6 +185,202 @@ export class TableService {
     });
 
     return table;
+  }
+
+  static async getMasterOverview(userId: string, tableId: string) {
+    await this.ensureMaster(userId, tableId);
+
+    const [
+      table,
+      totalMembers,
+      totalPlayers,
+      totalCharacters,
+      pendingCharacters,
+      approvedCharacters,
+      rejectedCharacters,
+      needsChangesCharacters,
+      totalMissions,
+      activeMissions,
+      latestMission,
+      pendingSubmissions,
+      reviewedSubmissions,
+      totalEvents,
+      latestEvent,
+    ] = await prisma.$transaction([
+      prisma.table.findUnique({
+        where: { id: tableId },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          joinCode: true,
+          maxPlayers: true,
+          status: true,
+          masterId: true,
+          world: {
+            select: {
+              id: true,
+              campaignTitle: true,
+              summary: true,
+              rules: true,
+              characterCreationCriteria: true,
+            },
+          },
+        },
+      }),
+      prisma.tableMember.count({
+        where: { tableId, status: TableMemberStatus.ACTIVE },
+      }),
+      prisma.tableMember.count({
+        where: {
+          tableId,
+          role: TableMemberRole.PLAYER,
+          status: TableMemberStatus.ACTIVE,
+        },
+      }),
+      prisma.character.count({ where: { tableId } }),
+      prisma.characterReview.count({
+        where: { tableId, status: CharacterReviewStatus.PENDING },
+      }),
+      prisma.characterReview.count({
+        where: { tableId, status: CharacterReviewStatus.APPROVED },
+      }),
+      prisma.characterReview.count({
+        where: { tableId, status: CharacterReviewStatus.REJECTED },
+      }),
+      prisma.characterReview.count({
+        where: { tableId, status: CharacterReviewStatus.NEEDS_CHANGES },
+      }),
+      prisma.tableMission.count({ where: { tableId } }),
+      prisma.tableMission.count({
+        where: { tableId, status: "ACTIVE" },
+      }),
+      prisma.tableMission.findFirst({
+        where: { tableId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          dueDate: true,
+          createdAt: true,
+        },
+      }),
+      prisma.tableMissionSubmission.count({
+        where: {
+          mission: { tableId },
+          status: TableMissionSubmissionStatus.SUBMITTED,
+        },
+      }),
+      prisma.tableMissionSubmission.count({
+        where: {
+          mission: { tableId },
+          status: { not: TableMissionSubmissionStatus.SUBMITTED },
+        },
+      }),
+      prisma.tableTimelineEvent.count({ where: { tableId } }),
+      prisma.tableTimelineEvent.findFirst({
+        where: { tableId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          type: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    if (!table) {
+      throw new AppError(404, "Mesa nao encontrada.", "TABLE_NOT_FOUND");
+    }
+
+    const hasSummary = Boolean(table.world?.summary.trim());
+    const hasRules = this.hasJsonContent(table.world?.rules);
+    const hasCharacterCriteria = this.hasJsonContent(
+      table.world?.characterCreationCriteria
+    );
+
+    const guidance = buildMasterOverviewGuidance({
+      hasWorldSummary: hasSummary,
+      hasPlayers: totalPlayers > 0,
+      totalCharacters,
+      pendingCharacters,
+      totalMissions,
+      hasActiveMission: activeMissions > 0,
+      totalEvents,
+      pendingSubmissions,
+    });
+
+    const overview = {
+      table: {
+        id: table.id,
+        name: table.name,
+        description: table.description,
+        joinCode: table.joinCode,
+        code: table.joinCode,
+        maxPlayers: table.maxPlayers,
+        status: table.status,
+        membersCount: totalMembers,
+        currentUserRole: TableMemberRole.MASTER,
+        isMaster: true,
+      },
+      world: {
+        hasWorld: Boolean(table.world),
+        worldId: table.world?.id ?? null,
+        worldTitle: table.world?.campaignTitle ?? null,
+        hasSummary,
+        hasRules,
+        hasCharacterCriteria,
+      },
+      members: {
+        totalMembers,
+        totalPlayers,
+        hasPlayers: totalPlayers > 0,
+      },
+      characters: {
+        totalCharacters,
+        pendingCharacters,
+        approvedCharacters,
+        rejectedCharacters,
+        needsChangesCharacters,
+      },
+      missions: {
+        totalMissions,
+        activeMissions,
+        hasActiveMission: activeMissions > 0,
+        latestMission,
+      },
+      submissions: {
+        pendingSubmissions,
+        reviewedSubmissions,
+      },
+      timeline: {
+        totalEvents,
+        hasTimeline: totalEvents > 0,
+        latestEvent,
+      },
+      ...guidance,
+    };
+
+    permissionDebug("table.master.overview.result", {
+      userId,
+      tableId,
+      members: overview.members,
+      characters: overview.characters,
+      missions: {
+        totalMissions,
+        activeMissions,
+      },
+      submissions: overview.submissions,
+      timeline: {
+        totalEvents,
+      },
+      nextRecommendedAction: overview.nextRecommendedAction.key,
+    });
+
+    return overview;
   }
 
   static async joinTable(userId: string, input: JoinTableInput) {
@@ -840,7 +1037,7 @@ export class TableService {
     throw new AppError(403, "Acesso restrito a membros da mesa.", "TABLE_MEMBER_REQUIRED");
   }
 
-  private static async ensureMaster(userId: string, tableId: string) {
+  static async ensureMaster(userId: string, tableId: string) {
     const membership = await this.ensureMembership(userId, tableId);
 
     if (
@@ -1044,6 +1241,26 @@ export class TableService {
 
   private static isUniqueJoinCodeConflict(error: unknown) {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+  }
+
+  private static hasJsonContent(value: Prisma.JsonValue | null | undefined): boolean {
+    if (value === null || value === undefined) {
+      return false;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === "object") {
+      return Object.keys(value).length > 0;
+    }
+
+    if (typeof value === "string") {
+      return value.trim().length > 0;
+    }
+
+    return true;
   }
 
   private static formatTable(

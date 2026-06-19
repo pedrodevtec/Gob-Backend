@@ -37,6 +37,8 @@ export const env = {
   JWT_SECRET: requireEnv("JWT_SECRET"),
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? "*",
   PAYMENT_WEBHOOK_SECRET: process.env.PAYMENT_WEBHOOK_SECRET ?? "",
+  AI_API_KEY: process.env.OPENAI_API_KEY || process.env.AI_API_KEY || "",
+  AI_MODEL: process.env.AI_MODEL ?? "gpt-5-nano",
   PERMISSION_DEBUG: parseBoolean(
     process.env.PERMISSION_DEBUG,
     (process.env.NODE_ENV ?? "development") !== "production"
