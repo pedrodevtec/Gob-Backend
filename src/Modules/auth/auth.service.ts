@@ -16,12 +16,12 @@ export class AuthService {
     const user = await UserModel.createUser(input.nome, input.email, senhaHash);
 
     return {
-      token: this.signToken(user.id, user.role),
+      token: this.signToken(user.id, user.accountRole),
       user: {
         id: user.id,
         nome: user.nome,
         email: user.email,
-        role: user.role,
+        accountRole: user.accountRole,
         theme: user.theme ?? null,
       },
     };
@@ -39,18 +39,18 @@ export class AuthService {
     }
 
     return {
-      token: this.signToken(user.id, user.role),
+      token: this.signToken(user.id, user.accountRole),
       user: {
         id: user.id,
         nome: user.nome,
         email: user.email,
-        role: user.role,
+        accountRole: user.accountRole,
         theme: user.theme ?? null,
       },
     };
   }
 
-  private static signToken(userId: string, role: "PLAYER" | "ADMIN"): string {
-    return jwt.sign({ id: userId, role }, env.JWT_SECRET, { expiresIn: "1h" });
+  private static signToken(userId: string, accountRole: "USER" | "ADMIN"): string {
+    return jwt.sign({ id: userId, accountRole }, env.JWT_SECRET, { expiresIn: "1h" });
   }
 }

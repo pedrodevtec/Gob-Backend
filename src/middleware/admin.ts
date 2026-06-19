@@ -7,7 +7,7 @@ export default function adminOnly(req: Request, _res: Response, next: NextFuncti
     return;
   }
 
-  if (req.user.role !== "ADMIN") {
+  if (req.user.accountRole !== "ADMIN") {
     next(new AppError(403, "Acesso restrito a administradores.", "ADMIN_REQUIRED"));
     return;
   }

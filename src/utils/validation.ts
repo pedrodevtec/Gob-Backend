@@ -154,10 +154,10 @@ export const requireUserId = (req: Request): string => {
   return req.user.id;
 };
 
-export const requireUserRole = (req: Request): "PLAYER" | "ADMIN" => {
-  if (!req.user?.role) {
+export const requireAccountRole = (req: Request): "USER" | "ADMIN" => {
+  if (!req.user?.accountRole) {
     throw new AppError(401, "Usuario nao autenticado.", "AUTH_REQUIRED");
   }
 
-  return req.user.role;
+  return req.user.accountRole;
 };

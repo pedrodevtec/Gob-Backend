@@ -8,8 +8,8 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-enum UserRole {
-  PLAYER
+enum AccountRole {
+  USER
   ADMIN
 }
 
@@ -83,6 +83,17 @@ enum TableMemberRole {
   PLAYER
 }
 
+enum TableMemberStatus {
+  ACTIVE
+  INVITED
+  REMOVED
+}
+
+enum TableStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum CharacterReviewStatus {
   PENDING
   APPROVED
@@ -120,68 +131,68 @@ enum TableTimelineEventType {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  nome          String
-  email         String         @unique
-  senha         String
-  role          UserRole       @default(PLAYER)
-  theme         String?
-  characters    Character[]    @relation("UserToCharacter")
-  paymentOrders PaymentOrder[]
-  masteredTables Table[]       @relation("TableMaster")
-  tableMembers   TableMember[]
-  createdCharacterTraits CharacterTrait[] @relation("CharacterTraitCreator")
-  createdTableMissions   TableMission[]   @relation("TableMissionCreator")
+  id                      String                   @id @default(uuid())
+  nome                    String
+  email                   String                   @unique
+  senha                   String
+  accountRole             AccountRole              @default(USER)
+  theme                   String?
+  characters              Character[]              @relation("UserToCharacter")
+  paymentOrders           PaymentOrder[]
+  masteredTables          Table[]                  @relation("TableMaster")
+  tableMembers            TableMember[]
+  createdCharacterTraits  CharacterTrait[]         @relation("CharacterTraitCreator")
+  createdTableMissions    TableMission[]           @relation("TableMissionCreator")
   tableMissionSubmissions TableMissionSubmission[]
-  tableTimelineEvents TableTimelineEvent[] @relation("TableTimelineEventCreator")
+  tableTimelineEvents     TableTimelineEvent[]     @relation("TableTimelineEventCreator")
 }
 
 model Character {
-  id             String         @id @default(uuid())
-  userId         String
-  name           String
-  level          Int            @default(1)
-  xp             Int            @default(0)
-  pvpRating      Int            @default(1000)
-  pvpWins        Int            @default(0)
-  pvpLosses      Int            @default(0)
-  lastPvpAt      DateTime?
-  currentHealth  Int            @default(100)
-  status         CharacterStatus @default(READY)
-  lastCheckpoint String?
-  lastCombatAt   DateTime?
+  id              String          @id @default(uuid())
+  userId          String
+  name            String
+  level           Int             @default(1)
+  xp              Int             @default(0)
+  pvpRating       Int             @default(1000)
+  pvpWins         Int             @default(0)
+  pvpLosses       Int             @default(0)
+  lastPvpAt       DateTime?
+  currentHealth   Int             @default(100)
+  status          CharacterStatus @default(READY)
+  lastCheckpoint  String?
+  lastCombatAt    DateTime?
   lastRecoveredAt DateTime?
-  avatarId       String?
-  titleId        String?
-  bannerId       String?
-  tableId        String?
-  posX           Float?
-  posY           Float?
-  posZ           Float?
-  inventoryId    String?        @unique
-  classId        String
-  createdAt      DateTime       @default(now())
+  avatarId        String?
+  titleId         String?
+  bannerId        String?
+  tableId         String?
+  posX            Float?
+  posY            Float?
+  posZ            Float?
+  inventoryId     String?         @unique
+  classId         String
+  createdAt       DateTime        @default(now())
 
-  user          User           @relation("UserToCharacter", fields: [userId], references: [id])
-  table         Table?         @relation(fields: [tableId], references: [id])
-  inventory     Inventory?     @relation(fields: [inventoryId], references: [id])
-  class         Class          @relation("ClassToCharacter", fields: [classId], references: [id])
-  transactions  Transaction[]
-  actionLogs    CharacterActionLog[]
-  paymentOrders PaymentOrder[]
-  rewardClaims  RewardClaim[]
-  missionSessions CharacterMissionSession[]
-  combatSessions  CombatSession[]
-  sentTrades    Trade[]        @relation("TradeRequesterCharacter")
-  receivedTrades Trade[]       @relation("TradeTargetCharacter")
-  pvpMatchesAsChallenger PvpMatch[] @relation("PvpMatchChallenger")
-  pvpMatchesAsOpponent  PvpMatch[] @relation("PvpMatchOpponent")
-  pvpWinsAsWinner       PvpMatch[] @relation("PvpMatchWinner")
-  pvpLossesAsLoser      PvpMatch[] @relation("PvpMatchLoser")
-  reviews               CharacterReview[]
-  traits                CharacterTrait[]
+  user                    User                      @relation("UserToCharacter", fields: [userId], references: [id])
+  table                   Table?                    @relation(fields: [tableId], references: [id])
+  inventory               Inventory?                @relation(fields: [inventoryId], references: [id])
+  class                   Class                     @relation("ClassToCharacter", fields: [classId], references: [id])
+  transactions            Transaction[]
+  actionLogs              CharacterActionLog[]
+  paymentOrders           PaymentOrder[]
+  rewardClaims            RewardClaim[]
+  missionSessions         CharacterMissionSession[]
+  combatSessions          CombatSession[]
+  sentTrades              Trade[]                   @relation("TradeRequesterCharacter")
+  receivedTrades          Trade[]                   @relation("TradeTargetCharacter")
+  pvpMatchesAsChallenger  PvpMatch[]                @relation("PvpMatchChallenger")
+  pvpMatchesAsOpponent    PvpMatch[]                @relation("PvpMatchOpponent")
+  pvpWinsAsWinner         PvpMatch[]                @relation("PvpMatchWinner")
+  pvpLossesAsLoser        PvpMatch[]                @relation("PvpMatchLoser")
+  reviews                 CharacterReview[]
+  traits                  CharacterTrait[]
   tableMissionSubmissions TableMissionSubmission[]
-  timelineEvents        TableTimelineEvent[]
+  timelineEvents          TableTimelineEvent[]
 
   @@index([tableId, createdAt])
 }
@@ -196,34 +207,34 @@ model Inventory {
 }
 
 model Item {
-  id          String    @id @default(uuid())
-  name        String
-  value       Int
-  category    String
-  type        String
-  img         String
-  effect      String?
+  id               String  @id @default(uuid())
+  name             String
+  value            Int
+  category         String
+  type             String
+  img              String
+  effect           String?
   levelRequirement Int?
-  quantity    Int       @default(1)
-  inventoryId String
-  monsterId   String?
+  quantity         Int     @default(1)
+  inventoryId      String
+  monsterId        String?
 
   inventory Inventory @relation(fields: [inventoryId], references: [id])
   monster   Monster?  @relation
 }
 
 model Equipment {
-  id          String    @id @default(uuid())
-  name        String
-  value       Int
-  category    String
-  type        String
-  img         String
-  effect      String?
+  id               String    @id @default(uuid())
+  name             String
+  value            Int
+  category         String
+  type             String
+  img              String
+  effect           String?
   levelRequirement Int?
-  isEquipped  Boolean   @default(false)
-  equippedAt  DateTime?
-  inventoryId String
+  isEquipped       Boolean   @default(false)
+  equippedAt       DateTime?
+  inventoryId      String
 
   inventory Inventory @relation(fields: [inventoryId], references: [id])
 }
@@ -265,55 +276,55 @@ model BountyHunt {
 }
 
 model Monster {
-  id         String  @id @default(uuid())
-  name       String  @unique
+  id          String  @id @default(uuid())
+  name        String  @unique
   description String?
-  imageUrl   String?
-  level      Int
-  health     Int
-  attack     Int
-  defense    Int
-  experience Int
-  dropItemId String? @unique
+  imageUrl    String?
+  level       Int
+  health      Int
+  attack      Int
+  defense     Int
+  experience  Int
+  dropItemId  String? @unique
 
-  dropItem Item?         @relation(fields: [dropItemId], references: [id])
+  dropItem Item?        @relation(fields: [dropItemId], references: [id])
   bounties BountyHunt[]
 }
 
 model MissionDefinition {
-  id                 String             @id @default(uuid())
-  title              String
-  description        String?
-  difficulty         GameplayDifficulty @default(EASY)
-  recommendedLevel   Int                @default(1)
-  imageUrl           String?
-  startNpcId         String?
-  completionNpcId    String?
-  startDialogue      String?
-  completionDialogue String?
-  repeatCooldownSeconds Int             @default(1800)
-  journey            Json?
-  enemyName          String
-  enemyLevel         Int
-  enemyHealth        Int
-  enemyAttack        Int
-  enemyDefense       Int
-  rewardXp           Int
-  rewardCoins        Int
-  rewardItemName     String?
-  rewardItemCategory String?
-  rewardItemType     String?
-  rewardItemImg      String?
-  rewardItemEffect   String?
-  rewardItemValue    Int?
-  rewardItemQuantity Int                @default(1)
-  isActive           Boolean            @default(true)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  id                    String             @id @default(uuid())
+  title                 String
+  description           String?
+  difficulty            GameplayDifficulty @default(EASY)
+  recommendedLevel      Int                @default(1)
+  imageUrl              String?
+  startNpcId            String?
+  completionNpcId       String?
+  startDialogue         String?
+  completionDialogue    String?
+  repeatCooldownSeconds Int                @default(1800)
+  journey               Json?
+  enemyName             String
+  enemyLevel            Int
+  enemyHealth           Int
+  enemyAttack           Int
+  enemyDefense          Int
+  rewardXp              Int
+  rewardCoins           Int
+  rewardItemName        String?
+  rewardItemCategory    String?
+  rewardItemType        String?
+  rewardItemImg         String?
+  rewardItemEffect      String?
+  rewardItemValue       Int?
+  rewardItemQuantity    Int                @default(1)
+  isActive              Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
-  startNpc       NpcDefinition?            @relation("MissionStartNpc", fields: [startNpcId], references: [id])
-  completionNpc  NpcDefinition?            @relation("MissionCompletionNpc", fields: [completionNpcId], references: [id])
-  sessions       CharacterMissionSession[]
+  startNpc      NpcDefinition?            @relation("MissionStartNpc", fields: [startNpcId], references: [id])
+  completionNpc NpcDefinition?            @relation("MissionCompletionNpc", fields: [completionNpcId], references: [id])
+  sessions      CharacterMissionSession[]
 }
 
 model TrainingDefinition {
@@ -355,24 +366,24 @@ model NpcDefinition {
 }
 
 model Transaction {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   characterId String
   type        String
   value       Int
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime @default(now())
 
   character Character @relation(fields: [characterId], references: [id])
 }
 
 model CharacterActionLog {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   characterId String
   actionType  String
   referenceId String?
   outcome     String
   availableAt DateTime?
   metadata    String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   character Character @relation(fields: [characterId], references: [id])
 
@@ -381,23 +392,23 @@ model CharacterActionLog {
 }
 
 model ShopProduct {
-  id             String               @id @default(uuid())
-  slug           String               @unique
-  name           String
-  description    String?
-  category       String
-  type           String
-  img            String
-  effect         String?
+  id               String               @id @default(uuid())
+  slug             String               @unique
+  name             String
+  description      String?
+  category         String
+  type             String
+  img              String
+  effect           String?
   levelRequirement Int?
-  assetKind      ShopProductAssetKind
-  price          Int
-  currency       String               @default("BRL")
-  rewardCoins    Int                  @default(0)
-  rewardQuantity Int                  @default(1)
-  isActive       Boolean              @default(true)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  assetKind        ShopProductAssetKind
+  price            Int
+  currency         String               @default("BRL")
+  rewardCoins      Int                  @default(0)
+  rewardQuantity   Int                  @default(1)
+  isActive         Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   paymentOrders PaymentOrder[]
 }
@@ -459,32 +470,32 @@ model CharacterMissionSession {
 }
 
 model CombatSession {
-  id                   String              @id @default(uuid())
-  characterId          String
-  missionSessionId     String?
-  sourceType           CombatSourceType
-  sourceId             String
-  status               CombatSessionStatus @default(IN_PROGRESS)
-  enemyName            String
-  enemyImageUrl        String?
-  enemyLevel           Int
-  enemyAttack          Int
-  enemyDefense         Int
-  enemyCurrentHealth   Int
-  enemyMaxHealth       Int
+  id                     String              @id @default(uuid())
+  characterId            String
+  missionSessionId       String?
+  sourceType             CombatSourceType
+  sourceId               String
+  status                 CombatSessionStatus @default(IN_PROGRESS)
+  enemyName              String
+  enemyImageUrl          String?
+  enemyLevel             Int
+  enemyAttack            Int
+  enemyDefense           Int
+  enemyCurrentHealth     Int
+  enemyMaxHealth         Int
   characterCurrentHealth Int
-  characterMaxHealth   Int
-  turnNumber           Int                 @default(1)
-  availableAt          DateTime?
-  rewards              Json?
-  defeatPenalty        Json?
-  battleLog            Json?
-  metadata             Json?
-  startedAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
-  completedAt          DateTime?
+  characterMaxHealth     Int
+  turnNumber             Int                 @default(1)
+  availableAt            DateTime?
+  rewards                Json?
+  defeatPenalty          Json?
+  battleLog              Json?
+  metadata               Json?
+  startedAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  completedAt            DateTime?
 
-  character      Character               @relation(fields: [characterId], references: [id])
+  character      Character                @relation(fields: [characterId], references: [id])
   missionSession CharacterMissionSession? @relation(fields: [missionSessionId], references: [id])
 
   @@index([characterId, status, updatedAt])
@@ -503,8 +514,8 @@ model Trade {
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
 
-  requesterCharacter Character   @relation("TradeRequesterCharacter", fields: [requesterCharacterId], references: [id])
-  targetCharacter    Character   @relation("TradeTargetCharacter", fields: [targetCharacterId], references: [id])
+  requesterCharacter Character    @relation("TradeRequesterCharacter", fields: [requesterCharacterId], references: [id])
+  targetCharacter    Character    @relation("TradeTargetCharacter", fields: [targetCharacterId], references: [id])
   assets             TradeAsset[]
 
   @@index([requesterCharacterId, status, createdAt])
@@ -512,13 +523,13 @@ model Trade {
 }
 
 model TradeAsset {
-  id         String               @id @default(uuid())
-  tradeId    String
-  side       TradeParticipantSide
-  assetType  TradeAssetType
-  assetId    String
-  quantity   Int                  @default(1)
-  createdAt  DateTime             @default(now())
+  id        String               @id @default(uuid())
+  tradeId   String
+  side      TradeParticipantSide
+  assetType TradeAssetType
+  assetId   String
+  quantity  Int                  @default(1)
+  createdAt DateTime             @default(now())
 
   trade Trade @relation(fields: [tradeId], references: [id])
 
@@ -526,16 +537,16 @@ model TradeAsset {
 }
 
 model PvpMatch {
-  id                   String   @id @default(uuid())
-  challengerCharacterId String
-  opponentCharacterId   String
-  winnerCharacterId     String
-  loserCharacterId      String
+  id                     String   @id @default(uuid())
+  challengerCharacterId  String
+  opponentCharacterId    String
+  winnerCharacterId      String
+  loserCharacterId       String
   challengerRatingBefore Int
   challengerRatingAfter  Int
   opponentRatingBefore   Int
   opponentRatingAfter    Int
-  createdAt             DateTime @default(now())
+  createdAt              DateTime @default(now())
 
   challengerCharacter Character @relation("PvpMatchChallenger", fields: [challengerCharacterId], references: [id])
   opponentCharacter   Character @relation("PvpMatchOpponent", fields: [opponentCharacterId], references: [id])
@@ -547,39 +558,42 @@ model PvpMatch {
 }
 
 model Table {
-  id          String        @id @default(uuid())
-  masterUserId String
+  id          String      @id @default(uuid())
+  masterId    String
   name        String
-  joinCode    String        @unique
-  maxPlayers  Int           @default(8)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  description String      @default("")
+  joinCode    String      @unique
+  maxPlayers  Int         @default(8)
+  status      TableStatus @default(ACTIVE)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  master  User          @relation("TableMaster", fields: [masterUserId], references: [id])
-  members TableMember[]
-  world   TableWorld?
-  characters Character[]
+  master           User                 @relation("TableMaster", fields: [masterId], references: [id])
+  members          TableMember[]
+  world            TableWorld?
+  characters       Character[]
   characterReviews CharacterReview[]
-  characterTraits CharacterTrait[]
-  missions TableMission[]
-  timelineEvents TableTimelineEvent[]
+  characterTraits  CharacterTrait[]
+  missions         TableMission[]
+  timelineEvents   TableTimelineEvent[]
 
-  @@index([masterUserId, createdAt])
+  @@index([masterId, createdAt])
 }
 
 model TableMember {
-  id        String          @id @default(uuid())
-  tableId   String
-  userId    String
-  role      TableMemberRole @default(PLAYER)
-  createdAt DateTime        @default(now())
+  id       String            @id @default(uuid())
+  tableId  String
+  userId   String
+  role     TableMemberRole   @default(PLAYER)
+  status   TableMemberStatus @default(ACTIVE)
+  joinedAt DateTime          @default(now())
 
   table Table @relation(fields: [tableId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
 
   @@unique([tableId, userId])
-  @@index([userId, createdAt])
-  @@index([tableId, role])
+  @@index([userId, status, joinedAt])
+  @@index([tableId, status, role])
 }
 
 model TableWorld {
@@ -653,15 +667,15 @@ model TableMission {
 }
 
 model TableMissionSubmission {
-  id         String                       @id @default(uuid())
-  missionId  String
+  id          String                       @id @default(uuid())
+  missionId   String
   characterId String
-  userId     String
-  content    String
-  status     TableMissionSubmissionStatus @default(SUBMITTED)
-  masterNote String?
-  createdAt  DateTime                     @default(now())
-  updatedAt  DateTime                     @updatedAt
+  userId      String
+  content     String
+  status      TableMissionSubmissionStatus @default(SUBMITTED)
+  masterNote  String?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
 
   mission   TableMission @relation(fields: [missionId], references: [id])
   character Character    @relation(fields: [characterId], references: [id])

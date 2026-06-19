@@ -3,7 +3,7 @@ export interface IUser {
   nome: string;
   email: string;
   senha: string;
-  role: "PLAYER" | "ADMIN";
+  accountRole: "USER" | "ADMIN";
   theme?: string | null;
 }
 

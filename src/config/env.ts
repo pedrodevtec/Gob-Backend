@@ -22,6 +22,14 @@ const parsePort = (value: string | undefined, fallback: number): number => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  return value.toLowerCase() === "true";
+};
+
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? "development",
   PORT: parsePort(process.env.PORT, 5000),
@@ -29,4 +37,8 @@ export const env = {
   JWT_SECRET: requireEnv("JWT_SECRET"),
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? "*",
   PAYMENT_WEBHOOK_SECRET: process.env.PAYMENT_WEBHOOK_SECRET ?? "",
+  PERMISSION_DEBUG: parseBoolean(
+    process.env.PERMISSION_DEBUG,
+    (process.env.NODE_ENV ?? "development") !== "production"
+  ),
 };

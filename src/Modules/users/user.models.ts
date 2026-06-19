@@ -20,7 +20,7 @@ export default class UserModel {
         id: true,
         nome: true,
         email: true,
-        role: true,
+        accountRole: true,
         theme: true,
       },
     });
@@ -40,7 +40,7 @@ export default class UserModel {
         id: true,
         nome: true,
         email: true,
-        role: true,
+        accountRole: true,
         theme: true,
       },
     });

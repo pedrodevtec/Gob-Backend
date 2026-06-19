@@ -112,7 +112,7 @@ export const openApiDocument = {
           id: { type: "string" },
           nome: { type: "string" },
           email: { type: "string", format: "email" },
-          role: { type: "string", enum: ["PLAYER", "ADMIN"] },
+          accountRole: { type: "string", enum: ["USER", "ADMIN"] },
           theme: { type: "string", nullable: true },
         },
       },
@@ -1140,6 +1140,40 @@ export const openApiDocument = {
         required: ["joinCode"],
         properties: {
           joinCode: { type: "string", example: "AB12CD" },
+        },
+      },
+      TableResponse: {
+        type: "object",
+        required: [
+          "id",
+          "name",
+          "masterId",
+          "currentUserRole",
+          "isMaster",
+          "memberStatus",
+          "membersCount",
+        ],
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          masterId: { type: "string" },
+          currentUserRole: { type: "string", enum: ["MASTER", "PLAYER"] },
+          isMaster: { type: "boolean" },
+          memberStatus: {
+            type: "string",
+            enum: ["ACTIVE", "INVITED", "REMOVED"],
+          },
+          membersCount: { type: "integer" },
+          joinCode: {
+            type: "string",
+            description: "Returned only when the current user is this table's MASTER.",
+          },
+          code: {
+            type: "string",
+            description: "Alias of joinCode, returned only to the table MASTER.",
+          },
+          maxPlayers: { type: "integer" },
+          playerCount: { type: "integer" },
         },
       },
       TableWorldRequest: {

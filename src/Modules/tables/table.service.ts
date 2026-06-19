@@ -2,13 +2,16 @@ import {
   CharacterReviewStatus,
   Prisma,
   TableMemberRole,
+  TableMemberStatus,
   TableMissionSubmissionStatus,
+  TableStatus,
   TableTimelineEventType,
 } from "@prisma/client";
 import { randomInt } from "crypto";
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { CharacterService } from "../characters/character.service";
+import { permissionDebug } from "../../utils/permissionDebug";
 import {
   CreateTableCharacterInput,
   CreateCharacterTraitInput,
@@ -45,7 +48,7 @@ const tableInclude = {
         },
       },
     },
-    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
   },
   world: true,
 } satisfies Prisma.TableInclude;
@@ -59,7 +62,7 @@ export class TableService {
         return await prisma.$transaction(async (tx) => {
           const table = await tx.table.create({
             data: {
-              masterUserId: userId,
+              masterId: userId,
               name: input.name,
               joinCode,
               maxPlayers: MAX_TABLE_PLAYERS,
@@ -67,13 +70,17 @@ export class TableService {
                 create: {
                   userId,
                   role: TableMemberRole.MASTER,
+                  status: TableMemberStatus.ACTIVE,
                 },
               },
             },
             include: tableInclude,
           });
 
-          return this.formatTable(table);
+          return this.formatTable(table, {
+            role: TableMemberRole.MASTER,
+            status: TableMemberStatus.ACTIVE,
+          });
         });
       } catch (error) {
         if (this.isUniqueJoinCodeConflict(error) && attempt < 4) {
@@ -102,32 +109,96 @@ export class TableService {
   }
 
   static async listTables(userId: string) {
-    const memberships = await prisma.tableMember.findMany({
-      where: { userId },
-      include: {
-        table: {
-          include: tableInclude,
-        },
+    const tables = await prisma.table.findMany({
+      where: {
+        OR: [
+          { masterId: userId },
+          {
+            members: {
+              some: {
+                userId,
+                status: TableMemberStatus.ACTIVE,
+              },
+            },
+          },
+        ],
       },
+      include: tableInclude,
       orderBy: { createdAt: "desc" },
     });
 
-    return memberships.map((membership) => this.formatTable(membership.table));
+    const formattedTables = tables.map((table) => {
+      if (table.masterId === userId) {
+        return this.formatTable(table, {
+          role: TableMemberRole.MASTER,
+          status: TableMemberStatus.ACTIVE,
+        });
+      }
+
+      const membership = table.members.find(
+        (member) =>
+          member.userId === userId &&
+          member.status === TableMemberStatus.ACTIVE
+      );
+
+      if (!membership) {
+        throw new AppError(
+          500,
+          "Membro ativo nao encontrado para a mesa.",
+          "TABLE_MEMBERSHIP_INCONSISTENT"
+        );
+      }
+
+      return this.formatTable(table, membership);
+    });
+
+    permissionDebug("tables.list.result", {
+      userId,
+      tables: formattedTables.map((table) => ({
+        tableId: table.id,
+        masterId: table.masterId,
+        currentUserRole: table.currentUserRole,
+        memberStatus: table.memberStatus,
+        isMaster: table.isMaster,
+        membersCount: table.membersCount,
+        includesJoinCode: "joinCode" in table,
+      })),
+    });
+
+    return formattedTables;
   }
 
   static async getTable(userId: string, tableId: string) {
-    const table = await this.getTableForMember(userId, tableId);
-    return this.formatTable(table);
+    const membership = await this.getTableForMember(userId, tableId);
+    const table = this.formatTable(membership.table, membership);
+
+    permissionDebug("tables.detail.result", {
+      userId,
+      tableId,
+      masterId: table.masterId,
+      currentUserRole: table.currentUserRole,
+      memberStatus: table.memberStatus,
+      isMaster: table.isMaster,
+      membersCount: table.membersCount,
+      includesJoinCode: "joinCode" in table,
+    });
+
+    return table;
   }
 
   static async joinTable(userId: string, input: JoinTableInput) {
+    const joinCode = input.joinCode.trim().toUpperCase();
     const table = await prisma.table.findUnique({
-      where: { joinCode: input.joinCode },
-      select: { id: true },
+      where: { joinCode },
+      select: { id: true, status: true },
     });
 
     if (!table) {
       throw new AppError(404, "Mesa nao encontrada para este codigo.", "TABLE_NOT_FOUND");
+    }
+
+    if (table.status !== TableStatus.ACTIVE) {
+      throw new AppError(409, "Esta mesa nao esta aceitando novos jogadores.", "TABLE_NOT_ACTIVE");
     }
 
     const joinedTable = await prisma.$transaction(async (tx) => {
@@ -144,24 +215,52 @@ export class TableService {
         throw new AppError(404, "Mesa nao encontrada.", "TABLE_NOT_FOUND");
       }
 
-      if (lockedTable.members.some((member) => member.userId === userId)) {
+      if (lockedTable.status !== TableStatus.ACTIVE) {
+        throw new AppError(409, "Esta mesa nao esta aceitando novos jogadores.", "TABLE_NOT_ACTIVE");
+      }
+
+      const existingMembership = lockedTable.members.find((member) => member.userId === userId);
+      if (
+        existingMembership?.status === TableMemberStatus.ACTIVE &&
+        lockedTable.masterId !== userId
+      ) {
         throw new AppError(409, "Usuario ja participa desta mesa.", "TABLE_ALREADY_JOINED");
       }
 
       const playerCount = lockedTable.members.filter(
-        (member) => member.role === TableMemberRole.PLAYER
+        (member) =>
+          member.role === TableMemberRole.PLAYER &&
+          member.status === TableMemberStatus.ACTIVE
       ).length;
       if (playerCount >= lockedTable.maxPlayers) {
         throw new AppError(409, "Mesa atingiu o limite de jogadores.", "TABLE_FULL");
       }
 
-      await tx.tableMember.create({
-        data: {
-          tableId: table.id,
-          userId,
-          role: TableMemberRole.PLAYER,
-        },
-      });
+      if (existingMembership) {
+        await tx.tableMember.update({
+          where: { id: existingMembership.id },
+          data: {
+            role:
+              lockedTable.masterId === userId
+                ? TableMemberRole.MASTER
+                : TableMemberRole.PLAYER,
+            status: TableMemberStatus.ACTIVE,
+            joinedAt: new Date(),
+          },
+        });
+      } else {
+        await tx.tableMember.create({
+          data: {
+            tableId: table.id,
+            userId,
+            role:
+              lockedTable.masterId === userId
+                ? TableMemberRole.MASTER
+                : TableMemberRole.PLAYER,
+            status: TableMemberStatus.ACTIVE,
+          },
+        });
+      }
 
       return tx.table.findUnique({
         where: { id: table.id },
@@ -173,7 +272,14 @@ export class TableService {
       throw new AppError(404, "Mesa nao encontrada.", "TABLE_NOT_FOUND");
     }
 
-    return this.formatTable(joinedTable);
+    const membership = joinedTable.members.find((member) => member.userId === userId);
+    return this.formatTable(
+      joinedTable,
+      membership ?? {
+        role: TableMemberRole.MASTER,
+        status: TableMemberStatus.ACTIVE,
+      }
+    );
   }
 
   static async getWorld(userId: string, tableId: string) {
@@ -607,51 +713,155 @@ export class TableService {
   }
 
   private static async getTableForMember(userId: string, tableId: string) {
-    const membership = await prisma.tableMember.findUnique({
+    const table = await prisma.table.findFirst({
       where: {
-        tableId_userId: {
-          tableId,
-          userId,
-        },
+        id: tableId,
+        OR: [
+          { masterId: userId },
+          {
+            members: {
+              some: {
+                userId,
+                status: TableMemberStatus.ACTIVE,
+              },
+            },
+          },
+        ],
       },
-      include: {
-        table: {
-          include: tableInclude,
-        },
-      },
+      include: tableInclude,
     });
 
-    if (!membership) {
+    if (!table) {
+      permissionDebug("table.detail.access.denied", {
+        userId,
+        tableId,
+        reason: "table_not_found_or_no_active_membership",
+      });
       throw new AppError(404, "Mesa nao encontrada ou acesso negado.", "TABLE_NOT_FOUND");
     }
 
-    return membership.table;
+    if (table.masterId === userId) {
+      permissionDebug("table.detail.access.granted", {
+        userId,
+        tableId,
+        masterId: table.masterId,
+        source: "masterId_fallback",
+        role: TableMemberRole.MASTER,
+        status: TableMemberStatus.ACTIVE,
+      });
+      return {
+        role: TableMemberRole.MASTER,
+        status: TableMemberStatus.ACTIVE,
+        table,
+      };
+    }
+
+    const membership = table.members.find(
+      (member) => member.userId === userId && member.status === TableMemberStatus.ACTIVE
+    );
+
+    permissionDebug("table.detail.access.granted", {
+      userId,
+      tableId,
+      masterId: table.masterId,
+      source: "active_membership",
+      role: membership?.role ?? null,
+      status: membership?.status ?? null,
+    });
+
+    return {
+      ...membership!,
+      table,
+    };
   }
 
   private static async ensureMembership(userId: string, tableId: string) {
-    const membership = await prisma.tableMember.findUnique({
-      where: {
-        tableId_userId: {
-          tableId,
-          userId,
+    const table = await prisma.table.findUnique({
+      where: { id: tableId },
+      select: {
+        masterId: true,
+        members: {
+          where: {
+            userId,
+            status: TableMemberStatus.ACTIVE,
+          },
+          select: {
+            role: true,
+            status: true,
+          },
+          take: 1,
         },
       },
     });
 
-    if (!membership) {
-      throw new AppError(403, "Acesso restrito a membros da mesa.", "TABLE_MEMBER_REQUIRED");
+    if (table?.masterId === userId) {
+      permissionDebug("table.membership.granted", {
+        userId,
+        tableId,
+        masterId: table.masterId,
+        source: "masterId_fallback",
+        role: TableMemberRole.MASTER,
+        status: TableMemberStatus.ACTIVE,
+      });
+      return {
+        role: TableMemberRole.MASTER,
+        status: TableMemberStatus.ACTIVE,
+      };
     }
 
-    return membership;
+    const membership = table?.members[0];
+    if (membership) {
+      permissionDebug("table.membership.granted", {
+        userId,
+        tableId,
+        masterId: table?.masterId ?? null,
+        source: "active_membership",
+        role: membership.role,
+        status: membership.status,
+      });
+      return membership;
+    }
+
+    if (!table) {
+      permissionDebug("table.membership.denied", {
+        userId,
+        tableId,
+        reason: "table_not_found",
+      });
+      throw new AppError(404, "Mesa nao encontrada.", "TABLE_NOT_FOUND");
+    }
+
+    permissionDebug("table.membership.denied", {
+      userId,
+      tableId,
+      masterId: table.masterId,
+      reason: "no_active_membership",
+    });
+    throw new AppError(403, "Acesso restrito a membros da mesa.", "TABLE_MEMBER_REQUIRED");
   }
 
   private static async ensureMaster(userId: string, tableId: string) {
     const membership = await this.ensureMembership(userId, tableId);
 
-    if (membership.role !== TableMemberRole.MASTER) {
+    if (
+      membership.role !== TableMemberRole.MASTER ||
+      membership.status !== TableMemberStatus.ACTIVE
+    ) {
+      permissionDebug("table.master.denied", {
+        userId,
+        tableId,
+        role: membership.role,
+        status: membership.status,
+      });
       throw new AppError(403, "Somente o mestre pode alterar o mundo da mesa.", "TABLE_MASTER_REQUIRED");
     }
 
+    permissionDebug("table.master.granted", {
+      userId,
+      tableId,
+      role: membership.role,
+      status: membership.status,
+    });
     return membership;
   }
 
@@ -839,14 +1049,33 @@ export class TableService {
   private static formatTable(
     table: Prisma.TableGetPayload<{
       include: typeof tableInclude;
-    }>
+    }>,
+    currentMembership: {
+      role: TableMemberRole;
+      status: TableMemberStatus;
+    }
   ) {
-    const playerCount = table.members.filter((member) => member.role === TableMemberRole.PLAYER).length;
+    const activeMembers = table.members.filter(
+      (member) => member.status === TableMemberStatus.ACTIVE
+    );
+    const playerCount = activeMembers.filter(
+      (member) => member.role === TableMemberRole.PLAYER
+    ).length;
+    const isMaster =
+      currentMembership.role === TableMemberRole.MASTER &&
+      currentMembership.status === TableMemberStatus.ACTIVE;
 
     return {
       id: table.id,
       name: table.name,
-      joinCode: table.joinCode,
+      description: table.description,
+      status: table.status,
+      masterId: table.masterId,
+      currentUserRole: currentMembership.role,
+      isMaster,
+      memberStatus: currentMembership.status,
+      membersCount: activeMembers.length,
+      ...(isMaster ? { joinCode: table.joinCode, code: table.joinCode } : {}),
       maxPlayers: table.maxPlayers,
       playerCount,
       createdAt: table.createdAt,
@@ -855,7 +1084,8 @@ export class TableService {
       members: table.members.map((member) => ({
         id: member.id,
         role: member.role,
-        createdAt: member.createdAt,
+        status: member.status,
+        joinedAt: member.joinedAt,
         user: member.user,
       })),
       world: table.world,

@@ -3,7 +3,7 @@ import {
   Prisma,
   PrismaClient,
   ShopProductAssetKind,
-  UserRole,
+  AccountRole,
 } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -89,7 +89,7 @@ async function main() {
     if (existingAdmin) {
       await prisma.user.update({
         where: { id: existingAdmin.id },
-        data: { role: UserRole.ADMIN },
+        data: { accountRole: AccountRole.ADMIN },
       });
     }
   }

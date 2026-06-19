@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { AppError } from "../errors/AppError";
 import { AuthTokenPayload } from "../types/auth";
+import { permissionDebug } from "../utils/permissionDebug";
 
 export default function auth(req: Request, _res: Response, next: NextFunction): void {
   try {
@@ -13,13 +14,30 @@ export default function auth(req: Request, _res: Response, next: NextFunction): 
     }
 
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-    const decoded = jwt.verify(token, env.JWT_SECRET) as AuthTokenPayload;
+    const decoded = jwt.verify(token, env.JWT_SECRET) as AuthTokenPayload & {
+      role?: "PLAYER" | "ADMIN" | "MASTER";
+    };
 
     if (!decoded?.id) {
       throw new AppError(401, "Token invalido.", "INVALID_TOKEN");
     }
 
-    req.user = decoded;
+    const normalizedAccountRole =
+      decoded.accountRole === "ADMIN" || decoded.role === "ADMIN" ? "ADMIN" : "USER";
+
+    req.user = {
+      id: decoded.id,
+      accountRole: normalizedAccountRole,
+    };
+
+    permissionDebug("auth.token.normalized", {
+      requestId: req.requestId,
+      path: req.originalUrl,
+      userId: decoded.id,
+      tokenAccountRole: decoded.accountRole ?? null,
+      legacyTokenRole: decoded.role ?? null,
+      normalizedAccountRole,
+    });
     next();
   } catch (error) {
     if (error instanceof AppError) {

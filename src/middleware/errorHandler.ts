@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/AppError";
+import { permissionDebug } from "../utils/permissionDebug";
 
 export const errorHandler = (
   error: unknown,
@@ -9,6 +10,19 @@ export const errorHandler = (
   _next: NextFunction
 ): void => {
   if (error instanceof AppError) {
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      permissionDebug("request.access.denied", {
+        requestId: req.requestId,
+        method: req.method,
+        path: req.originalUrl,
+        userId: req.user?.id ?? null,
+        accountRole: req.user?.accountRole ?? null,
+        statusCode: error.statusCode,
+        errorCode: error.code,
+        message: error.message,
+      });
+    }
+
     res.status(error.statusCode).json({
       success: false,
       error: {

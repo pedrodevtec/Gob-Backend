@@ -1,4 +1,4 @@
 export interface AuthTokenPayload {
   id: string;
-  role: "PLAYER" | "ADMIN";
+  accountRole: "USER" | "ADMIN";
 }
