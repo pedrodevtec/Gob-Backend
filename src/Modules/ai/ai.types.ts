@@ -5,7 +5,7 @@ export interface WorldSummaryInput {
     summary?: string;
     tone?: string;
     rules?: string;
-    characterCriteria?: string;
+    characterCreationCriteria?: string;
   };
 }
 
@@ -38,7 +38,7 @@ export interface WorldSummarySuggestion {
   suggestedSummary: string;
   suggestedTone: string;
   suggestedRules: string;
-  suggestedCharacterCriteria: string;
+  suggestedCharacterCreationCriteria: string;
 }
 
 export interface MissionIdeasSuggestion {

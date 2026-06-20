@@ -19,6 +19,7 @@ import { openApiDocument } from "./docs/openapi";
 import { errorHandler } from "./middleware/errorHandler";
 import { notFoundHandler } from "./middleware/notFound";
 import { requestContext } from "./middleware/requestContext";
+import { requestDuration } from "./middleware/requestDuration";
 
 const app = express();
 
@@ -29,6 +30,7 @@ const corsOrigin =
 
 app.use(cors({ origin: corsOrigin }));
 app.use(requestContext);
+app.use(requestDuration);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json({ limit: "1mb" }));
 

@@ -1,14 +1,107 @@
 import { Request } from "express";
-import { CharacterTraitType, Prisma, TableMissionStatus, TableTimelineEventType } from "@prisma/client";
+import {
+  CharacterReviewStatus,
+  CharacterTraitType,
+  Prisma,
+  TableMissionStatus,
+  TableMissionSubmissionStatus,
+  TableTimelineEventType,
+} from "@prisma/client";
 import { AppError } from "../../errors/AppError";
 import {
   getBody,
-  optionalObject,
   optionalString,
   requireObject,
   requireString,
 } from "../../utils/validation";
-import { CreateTableInput, JoinTableInput, UpsertTableWorldInput } from "./table.types";
+import {
+  CreateTableInput,
+  CursorPaginationQuery,
+  JoinTableInput,
+  ListCharacterTraitsQuery,
+  ListTableCharactersQuery,
+  ListTableMissionsQuery,
+  ListTableSubmissionsQuery,
+  ListTableTimelineQuery,
+  UpsertTableWorldInput,
+} from "./table.types";
+
+const SUBMISSION_STATUSES: TableMissionSubmissionStatus[] = [
+  "SUBMITTED",
+  "APPROVED",
+  "REJECTED",
+  "NEEDS_CHANGES",
+];
+const CHARACTER_REVIEW_STATUSES: CharacterReviewStatus[] = [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+  "NEEDS_CHANGES",
+];
+const MISSION_STATUSES: TableMissionStatus[] = [
+  "ACTIVE",
+  "COMPLETED",
+  "ARCHIVED",
+];
+
+const parseCursorPagination = (req: Request): CursorPaginationQuery => {
+  const rawCursor = req.query.cursor;
+  const rawLimit = req.query.limit;
+
+  if (Array.isArray(rawCursor) || Array.isArray(rawLimit)) {
+    throw new AppError(400, "Parametros de consulta invalidos.", "VALIDATION_ERROR");
+  }
+
+  const cursor =
+    rawCursor === undefined ? undefined : requireString(rawCursor, "cursor", 1, 100);
+
+  let limit = 20;
+  if (rawLimit !== undefined) {
+    if (typeof rawLimit !== "string" || !/^\d+$/.test(rawLimit)) {
+      throw new AppError(400, "Campo limit deve ser um inteiro.", "VALIDATION_ERROR");
+    }
+
+    limit = Number(rawLimit);
+    if (limit < 1 || limit > 50) {
+      throw new AppError(
+        400,
+        "Campo limit deve estar entre 1 e 50.",
+        "VALIDATION_ERROR"
+      );
+    }
+  }
+
+  return { cursor, limit };
+};
+
+const setNormalizedQuery = (
+  req: Request,
+  pagination: CursorPaginationQuery,
+  filters: Record<string, string | undefined> = {}
+): void => {
+  req.query = {
+    ...Object.fromEntries(
+      Object.entries(filters).filter((entry): entry is [string, string] => Boolean(entry[1]))
+    ),
+    ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
+    limit: String(pagination.limit),
+  };
+};
+
+const optionalJsonTextOrObject = (
+  value: unknown,
+  fieldName: string
+): Prisma.InputJsonValue | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    return { text: value };
+  }
+
+  return requireObject(value, fieldName) as Prisma.InputJsonObject;
+};
 
 const optionalBoolean = (value: unknown, fieldName: string): boolean | undefined => {
   if (value === undefined) {
@@ -69,24 +162,23 @@ export const validateJoinTable = (req: Request): void => {
 
 export const validateUpsertTableWorld = (req: Request): void => {
   const body = getBody(req);
+  const characterCreationCriteria =
+    body.characterCreationCriteria ?? body.characterCriteria;
   const parsed: UpsertTableWorldInput = {
-    campaignTitle: requireString(body.campaignTitle, "campaignTitle", 2, 120),
+    campaignTitle: requireString(
+      body.campaignTitle ?? body.title,
+      "campaignTitle",
+      2,
+      120
+    ),
     summary: requireString(body.summary, "summary", 1, 4000),
     tone: optionalString(body.tone, "tone", 1, 120),
-    rules: optionalObject(body.rules, "rules") as Prisma.InputJsonValue | undefined,
-    characterCreationCriteria: optionalObject(
-      body.characterCreationCriteria,
+    rules: optionalJsonTextOrObject(body.rules, "rules"),
+    characterCreationCriteria: optionalJsonTextOrObject(
+      characterCreationCriteria,
       "characterCreationCriteria"
-    ) as Prisma.InputJsonValue | undefined,
+    ),
   };
-
-  if (body.rules !== undefined) {
-    requireObject(body.rules, "rules");
-  }
-
-  if (body.characterCreationCriteria !== undefined) {
-    requireObject(body.characterCreationCriteria, "characterCreationCriteria");
-  }
 
   if (!parsed.campaignTitle || !parsed.summary) {
     throw new AppError(400, "Titulo e resumo da campanha sao obrigatorios.", "VALIDATION_ERROR");
@@ -190,6 +282,97 @@ export const validateReviewMissionSubmission = (req: Request): void => {
     masterNote: optionalString(body.masterNote, "masterNote", 1, 2000),
   };
 };
+
+export const validateListTableSubmissions = (req: Request): void => {
+  const rawStatus = req.query.status;
+
+  if (Array.isArray(rawStatus)) {
+    throw new AppError(400, "Parametros de consulta invalidos.", "VALIDATION_ERROR");
+  }
+
+  const status =
+    rawStatus === undefined
+      ? undefined
+      : (requireString(rawStatus, "status", 7, 20).toUpperCase() as TableMissionSubmissionStatus);
+
+  if (status && !SUBMISSION_STATUSES.includes(status)) {
+    throw new AppError(400, "Status de submissao invalido.", "VALIDATION_ERROR");
+  }
+
+  setNormalizedQuery(req, parseCursorPagination(req), { status });
+};
+
+export const getListTableSubmissionsQuery = (req: Request): ListTableSubmissionsQuery => ({
+  status: req.query.status as TableMissionSubmissionStatus | undefined,
+  cursor: req.query.cursor as string | undefined,
+  limit: Number(req.query.limit ?? 20),
+});
+
+export const validateListTableCharacters = (req: Request): void => {
+  const rawStatus = req.query.reviewStatus;
+  if (Array.isArray(rawStatus)) {
+    throw new AppError(400, "Parametros de consulta invalidos.", "VALIDATION_ERROR");
+  }
+
+  const reviewStatus =
+    rawStatus === undefined
+      ? undefined
+      : (requireString(rawStatus, "reviewStatus", 7, 20).toUpperCase() as CharacterReviewStatus);
+
+  if (reviewStatus && !CHARACTER_REVIEW_STATUSES.includes(reviewStatus)) {
+    throw new AppError(400, "Status de revisao invalido.", "VALIDATION_ERROR");
+  }
+
+  setNormalizedQuery(req, parseCursorPagination(req), { reviewStatus });
+};
+
+export const getListTableCharactersQuery = (req: Request): ListTableCharactersQuery => ({
+  reviewStatus: req.query.reviewStatus as CharacterReviewStatus | undefined,
+  cursor: req.query.cursor as string | undefined,
+  limit: Number(req.query.limit ?? 20),
+});
+
+export const validateListTableMissions = (req: Request): void => {
+  const rawStatus = req.query.status;
+  if (Array.isArray(rawStatus)) {
+    throw new AppError(400, "Parametros de consulta invalidos.", "VALIDATION_ERROR");
+  }
+
+  const status =
+    rawStatus === undefined
+      ? undefined
+      : (requireString(rawStatus, "status", 6, 20).toUpperCase() as TableMissionStatus);
+
+  if (status && !MISSION_STATUSES.includes(status)) {
+    throw new AppError(400, "Status de missao invalido.", "VALIDATION_ERROR");
+  }
+
+  setNormalizedQuery(req, parseCursorPagination(req), { status });
+};
+
+export const getListTableMissionsQuery = (req: Request): ListTableMissionsQuery => ({
+  status: req.query.status as TableMissionStatus | undefined,
+  cursor: req.query.cursor as string | undefined,
+  limit: Number(req.query.limit ?? 20),
+});
+
+export const validateListTableTimeline = (req: Request): void => {
+  setNormalizedQuery(req, parseCursorPagination(req));
+};
+
+export const getListTableTimelineQuery = (req: Request): ListTableTimelineQuery => ({
+  cursor: req.query.cursor as string | undefined,
+  limit: Number(req.query.limit ?? 20),
+});
+
+export const validateListCharacterTraits = (req: Request): void => {
+  setNormalizedQuery(req, parseCursorPagination(req));
+};
+
+export const getListCharacterTraitsQuery = (req: Request): ListCharacterTraitsQuery => ({
+  cursor: req.query.cursor as string | undefined,
+  limit: Number(req.query.limit ?? 20),
+});
 
 export const validateCreateTimelineEvent = (req: Request): void => {
   const body = getBody(req);

@@ -1,4 +1,5 @@
 import {
+  CharacterReviewStatus,
   CharacterTraitType,
   Prisma,
   TableMissionStatus,
@@ -62,6 +63,28 @@ export interface ReviewMissionSubmissionInput {
   status: Exclude<TableMissionSubmissionStatus, "SUBMITTED">;
   masterNote?: string;
 }
+
+export interface ListTableSubmissionsQuery {
+  status?: TableMissionSubmissionStatus;
+  cursor?: string;
+  limit: number;
+}
+
+export interface CursorPaginationQuery {
+  cursor?: string;
+  limit: number;
+}
+
+export interface ListTableCharactersQuery extends CursorPaginationQuery {
+  reviewStatus?: CharacterReviewStatus;
+}
+
+export interface ListTableMissionsQuery extends CursorPaginationQuery {
+  status?: TableMissionStatus;
+}
+
+export type ListTableTimelineQuery = CursorPaginationQuery;
+export type ListCharacterTraitsQuery = CursorPaginationQuery;
 
 export interface CreateTimelineEventInput {
   characterId?: string;

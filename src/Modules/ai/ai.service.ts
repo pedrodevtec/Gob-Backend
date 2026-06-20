@@ -112,6 +112,14 @@ export class AiService {
           },
           orderBy: { createdAt: "asc" },
         },
+        reviews: {
+          where: { tableId },
+          select: {
+            status: true,
+            masterFeedback: true,
+          },
+          take: 1,
+        },
       },
     });
 
@@ -135,6 +143,7 @@ export class AiService {
           name: character.name,
           level: character.level,
           class: character.class,
+          review: character.reviews[0] ?? null,
         },
         existingTraits: character.traits,
       }),

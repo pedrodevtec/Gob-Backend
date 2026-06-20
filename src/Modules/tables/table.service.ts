@@ -3,6 +3,7 @@ import {
   Prisma,
   TableMemberRole,
   TableMemberStatus,
+  TableMissionStatus,
   TableMissionSubmissionStatus,
   TableStatus,
   TableTimelineEventType,
@@ -21,6 +22,11 @@ import {
   CreateTableMissionInput,
   CreateTimelineEventInput,
   JoinTableInput,
+  ListCharacterTraitsQuery,
+  ListTableCharactersQuery,
+  ListTableMissionsQuery,
+  ListTableSubmissionsQuery,
+  ListTableTimelineQuery,
   ReviewMissionSubmissionInput,
   ReviewTableCharacterInput,
   UpdateTableMissionInput,
@@ -52,6 +58,14 @@ const tableInclude = {
     orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
   },
   world: true,
+  _count: {
+    select: {
+      characters: true,
+      characterReviews: true,
+      missions: true,
+      timelineEvents: true,
+    },
+  },
 } satisfies Prisma.TableInclude;
 
 export class TableService {
@@ -124,25 +138,55 @@ export class TableService {
           },
         ],
       },
-      include: tableInclude,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        masterId: true,
+        members: {
+          where: {
+            userId,
+            status: TableMemberStatus.ACTIVE,
+          },
+          select: {
+            role: true,
+            status: true,
+          },
+          take: 1,
+        },
+        _count: {
+          select: {
+            members: {
+              where: { status: TableMemberStatus.ACTIVE },
+            },
+          },
+        },
+        world: {
+          select: {
+            campaignTitle: true,
+          },
+        },
+        timelineEvents: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            type: true,
+            createdAt: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 
     const formattedTables = tables.map((table) => {
-      if (table.masterId === userId) {
-        return this.formatTable(table, {
-          role: TableMemberRole.MASTER,
-          status: TableMemberStatus.ACTIVE,
-        });
-      }
+      const currentUserRole =
+        table.masterId === userId ? TableMemberRole.MASTER : table.members[0]?.role;
 
-      const membership = table.members.find(
-        (member) =>
-          member.userId === userId &&
-          member.status === TableMemberStatus.ACTIVE
-      );
-
-      if (!membership) {
+      if (!currentUserRole) {
         throw new AppError(
           500,
           "Membro ativo nao encontrado para a mesa.",
@@ -150,23 +194,278 @@ export class TableService {
         );
       }
 
-      return this.formatTable(table, membership);
+      return {
+        id: table.id,
+        name: table.name,
+        description: table.description,
+        status: table.status,
+        currentUserRole,
+        isMaster: currentUserRole === TableMemberRole.MASTER,
+        memberStatus: TableMemberStatus.ACTIVE,
+        membersCount: table._count.members,
+        worldTitle: table.world?.campaignTitle ?? null,
+        latestTimelineEvent: table.timelineEvents[0] ?? null,
+      };
     });
 
     permissionDebug("tables.list.result", {
       userId,
       tables: formattedTables.map((table) => ({
         tableId: table.id,
-        masterId: table.masterId,
         currentUserRole: table.currentUserRole,
         memberStatus: table.memberStatus,
         isMaster: table.isMaster,
         membersCount: table.membersCount,
-        includesJoinCode: "joinCode" in table,
+        includesJoinCode: false,
       })),
     });
 
     return formattedTables;
+  }
+
+  static async getDashboard(userId: string) {
+    const tables = await prisma.table.findMany({
+      where: {
+        OR: [
+          { masterId: userId },
+          {
+            members: {
+              some: {
+                userId,
+                status: TableMemberStatus.ACTIVE,
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        masterId: true,
+        members: {
+          where: {
+            userId,
+            status: TableMemberStatus.ACTIVE,
+          },
+          select: {
+            role: true,
+            status: true,
+          },
+          take: 1,
+        },
+        _count: {
+          select: {
+            members: {
+              where: { status: TableMemberStatus.ACTIVE },
+            },
+          },
+        },
+        world: {
+          select: {
+            campaignTitle: true,
+          },
+        },
+        timelineEvents: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            type: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const dashboardTables = tables.map((table) => {
+      const membership = table.members[0];
+      const currentUserRole =
+        table.masterId === userId ? TableMemberRole.MASTER : membership?.role;
+
+      if (!currentUserRole) {
+        throw new AppError(
+          500,
+          "Membro ativo nao encontrado para a mesa.",
+          "TABLE_MEMBERSHIP_INCONSISTENT"
+        );
+      }
+
+      return {
+        id: table.id,
+        name: table.name,
+        description: table.description,
+        status: table.status,
+        currentUserRole,
+        isMaster: currentUserRole === TableMemberRole.MASTER,
+        memberStatus: TableMemberStatus.ACTIVE,
+        membersCount: table._count.members,
+        worldTitle: table.world?.campaignTitle ?? null,
+        latestTimelineEvent: table.timelineEvents[0] ?? null,
+      };
+    });
+
+    const masterTableIds = dashboardTables
+      .filter((table) => table.isMaster)
+      .map((table) => table.id);
+    const playerTableIds = dashboardTables
+      .filter((table) => !table.isMaster)
+      .map((table) => table.id);
+    const accessibleTableIds = dashboardTables.map((table) => table.id);
+
+    const [
+      pendingCharacterReviewsCount,
+      pendingCharacterReviews,
+      activePlayerMissionsCount,
+      activePlayerMissions,
+      recentTimeline,
+    ] = await prisma.$transaction([
+      prisma.characterReview.count({
+        where: {
+          tableId: { in: masterTableIds },
+          status: CharacterReviewStatus.PENDING,
+        },
+      }),
+      prisma.characterReview.findMany({
+        where: {
+          tableId: { in: masterTableIds },
+          status: CharacterReviewStatus.PENDING,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          masterFeedback: true,
+          createdAt: true,
+          updatedAt: true,
+          table: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          character: {
+            select: {
+              id: true,
+              name: true,
+              level: true,
+              user: {
+                select: {
+                  id: true,
+                  nome: true,
+                  email: true,
+                },
+              },
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.tableMission.count({
+        where: {
+          tableId: { in: playerTableIds },
+          status: TableMissionStatus.ACTIVE,
+        },
+      }),
+      prisma.tableMission.findMany({
+        where: {
+          tableId: { in: playerTableIds },
+          status: TableMissionStatus.ACTIVE,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 5,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          objective: true,
+          isRequired: true,
+          status: true,
+          dueDate: true,
+          createdAt: true,
+          table: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }),
+      prisma.tableTimelineEvent.findMany({
+        where: {
+          tableId: { in: accessibleTableIds },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 5,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          type: true,
+          createdAt: true,
+          table: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          character: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              nome: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      summary: {
+        totalTables: dashboardTables.length,
+        masterTables: masterTableIds.length,
+        playerTables: playerTableIds.length,
+        pendingCharacterReviews: pendingCharacterReviewsCount,
+        activePlayerMissions: activePlayerMissionsCount,
+      },
+      tables: dashboardTables,
+      pendingCharacterReviews: pendingCharacterReviews.map((review) => ({
+        ...review,
+        character: {
+          ...review.character,
+          user: {
+            id: review.character.user.id,
+            name: review.character.user.nome,
+            email: review.character.user.email,
+          },
+        },
+      })),
+      activePlayerMissions,
+      recentTimeline: recentTimeline.map((event) => ({
+        ...event,
+        createdBy: {
+          id: event.createdBy.id,
+          name: event.createdBy.nome,
+          email: event.createdBy.email,
+        },
+      })),
+    };
   }
 
   static async getTable(userId: string, tableId: string) {
@@ -192,19 +491,11 @@ export class TableService {
 
     const [
       table,
-      totalMembers,
-      totalPlayers,
-      totalCharacters,
-      pendingCharacters,
-      approvedCharacters,
-      rejectedCharacters,
-      needsChangesCharacters,
-      totalMissions,
-      activeMissions,
+      memberGroups,
+      characterReviewGroups,
+      missionGroups,
       latestMission,
-      pendingSubmissions,
-      reviewedSubmissions,
-      totalEvents,
+      submissionGroups,
       latestEvent,
     ] = await prisma.$transaction([
       prisma.table.findUnique({
@@ -217,6 +508,15 @@ export class TableService {
           maxPlayers: true,
           status: true,
           masterId: true,
+          _count: {
+            select: {
+              members: {
+                where: { status: TableMemberStatus.ACTIVE },
+              },
+              characters: true,
+              timelineEvents: true,
+            },
+          },
           world: {
             select: {
               id: true,
@@ -228,32 +528,23 @@ export class TableService {
           },
         },
       }),
-      prisma.tableMember.count({
+      prisma.tableMember.groupBy({
+        by: ["role"],
         where: { tableId, status: TableMemberStatus.ACTIVE },
+        orderBy: { role: "asc" },
+        _count: { _all: true },
       }),
-      prisma.tableMember.count({
-        where: {
-          tableId,
-          role: TableMemberRole.PLAYER,
-          status: TableMemberStatus.ACTIVE,
-        },
+      prisma.characterReview.groupBy({
+        by: ["status"],
+        where: { tableId },
+        orderBy: { status: "asc" },
+        _count: { _all: true },
       }),
-      prisma.character.count({ where: { tableId } }),
-      prisma.characterReview.count({
-        where: { tableId, status: CharacterReviewStatus.PENDING },
-      }),
-      prisma.characterReview.count({
-        where: { tableId, status: CharacterReviewStatus.APPROVED },
-      }),
-      prisma.characterReview.count({
-        where: { tableId, status: CharacterReviewStatus.REJECTED },
-      }),
-      prisma.characterReview.count({
-        where: { tableId, status: CharacterReviewStatus.NEEDS_CHANGES },
-      }),
-      prisma.tableMission.count({ where: { tableId } }),
-      prisma.tableMission.count({
-        where: { tableId, status: "ACTIVE" },
+      prisma.tableMission.groupBy({
+        by: ["status"],
+        where: { tableId },
+        orderBy: { status: "asc" },
+        _count: { _all: true },
       }),
       prisma.tableMission.findFirst({
         where: { tableId },
@@ -266,19 +557,14 @@ export class TableService {
           createdAt: true,
         },
       }),
-      prisma.tableMissionSubmission.count({
+      prisma.tableMissionSubmission.groupBy({
+        by: ["status"],
         where: {
           mission: { tableId },
-          status: TableMissionSubmissionStatus.SUBMITTED,
         },
+        orderBy: { status: "asc" },
+        _count: { _all: true },
       }),
-      prisma.tableMissionSubmission.count({
-        where: {
-          mission: { tableId },
-          status: { not: TableMissionSubmissionStatus.SUBMITTED },
-        },
-      }),
-      prisma.tableTimelineEvent.count({ where: { tableId } }),
       prisma.tableTimelineEvent.findFirst({
         where: { tableId },
         orderBy: { createdAt: "desc" },
@@ -296,6 +582,55 @@ export class TableService {
       throw new AppError(404, "Mesa nao encontrada.", "TABLE_NOT_FOUND");
     }
 
+    const aggregateCount = (
+      group: { _count?: true | { _all?: number } } | undefined
+    ): number =>
+      group && typeof group._count === "object" ? group._count._all ?? 0 : 0;
+    const countStatusGroup = (
+      groups: Array<{
+        status: string;
+        _count?: true | { _all?: number };
+      }>,
+      status: string
+    ): number => aggregateCount(groups.find((group) => group.status === status));
+    const totalMembers = table._count.members;
+    const totalPlayers = aggregateCount(
+      memberGroups.find((group) => group.role === TableMemberRole.PLAYER)
+    );
+    const totalCharacters = table._count.characters;
+    const pendingCharacters = countStatusGroup(
+      characterReviewGroups,
+      CharacterReviewStatus.PENDING
+    );
+    const approvedCharacters = countStatusGroup(
+      characterReviewGroups,
+      CharacterReviewStatus.APPROVED
+    );
+    const rejectedCharacters = countStatusGroup(
+      characterReviewGroups,
+      CharacterReviewStatus.REJECTED
+    );
+    const needsChangesCharacters = countStatusGroup(
+      characterReviewGroups,
+      CharacterReviewStatus.NEEDS_CHANGES
+    );
+    const totalMissions = missionGroups.reduce(
+      (total, group) => total + aggregateCount(group),
+      0
+    );
+    const activeMissions = countStatusGroup(missionGroups, TableMissionStatus.ACTIVE);
+    const pendingSubmissions = countStatusGroup(
+      submissionGroups,
+      TableMissionSubmissionStatus.SUBMITTED
+    );
+    const reviewedSubmissions = submissionGroups.reduce(
+      (total, group) =>
+        group.status === TableMissionSubmissionStatus.SUBMITTED
+          ? total
+          : total + aggregateCount(group),
+      0
+    );
+    const totalEvents = table._count.timelineEvents;
     const hasSummary = Boolean(table.world?.summary.trim());
     const hasRules = this.hasJsonContent(table.world?.rules);
     const hasCharacterCriteria = this.hasJsonContent(
@@ -538,12 +873,38 @@ export class TableService {
     });
   }
 
-  static async listCharacters(userId: string, tableId: string) {
+  static async listCharacters(
+    userId: string,
+    tableId: string,
+    query: ListTableCharactersQuery
+  ) {
     await this.ensureMembership(userId, tableId);
 
-    return prisma.character.findMany({
-      where: { tableId },
-      include: {
+    const characters = await prisma.character.findMany({
+      where: {
+        tableId,
+        ...(query.reviewStatus
+          ? {
+              reviews: {
+                some: {
+                  tableId,
+                  status: query.reviewStatus,
+                },
+              },
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        tableId: true,
+        userId: true,
+        name: true,
+        level: true,
+        status: true,
+        createdAt: true,
         user: {
           select: {
             id: true,
@@ -551,15 +912,31 @@ export class TableService {
             email: true,
           },
         },
-        class: true,
+        class: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         reviews: {
           where: { tableId },
           orderBy: { createdAt: "desc" },
           take: 1,
+          select: {
+            id: true,
+            tableId: true,
+            characterId: true,
+            status: true,
+            masterFeedback: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         },
       },
-      orderBy: { createdAt: "asc" },
     });
+
+    return this.toCursorPage(characters, query.limit);
   }
 
   static async reviewCharacter(
@@ -628,13 +1005,28 @@ export class TableService {
     return review;
   }
 
-  static async listCharacterTraits(userId: string, tableId: string, characterId: string) {
+  static async listCharacterTraits(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    query: ListCharacterTraitsQuery
+  ) {
     await this.ensureMembership(userId, tableId);
     await this.ensureTableCharacter(tableId, characterId);
 
-    return prisma.characterTrait.findMany({
+    const traits = await prisma.characterTrait.findMany({
       where: { tableId, characterId },
-      include: {
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        characterId: true,
+        tableId: true,
+        type: true,
+        name: true,
+        description: true,
+        createdAt: true,
         createdBy: {
           select: {
             id: true,
@@ -643,8 +1035,9 @@ export class TableService {
           },
         },
       },
-      orderBy: { createdAt: "asc" },
     });
+
+    return this.toCursorPage(traits, query.limit);
   }
 
   static async createCharacterTrait(
@@ -733,14 +1126,48 @@ export class TableService {
     return mission;
   }
 
-  static async listMissions(userId: string, tableId: string) {
+  static async listMissions(
+    userId: string,
+    tableId: string,
+    query: ListTableMissionsQuery
+  ) {
     await this.ensureMembership(userId, tableId);
 
-    return prisma.tableMission.findMany({
-      where: { tableId },
-      include: this.missionInclude(),
-      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    const missions = await prisma.tableMission.findMany({
+      where: {
+        tableId,
+        ...(query.status ? { status: query.status } : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        tableId: true,
+        title: true,
+        description: true,
+        objective: true,
+        isRequired: true,
+        status: true,
+        dueDate: true,
+        createdAt: true,
+        updatedAt: true,
+        createdBy: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            submissions: true,
+          },
+        },
+      },
     });
+
+    return this.toCursorPage(missions, query.limit);
   }
 
   static async getMission(userId: string, tableId: string, missionId: string) {
@@ -821,6 +1248,29 @@ export class TableService {
     });
   }
 
+  static async listTableSubmissions(
+    userId: string,
+    tableId: string,
+    query: ListTableSubmissionsQuery
+  ) {
+    const membership = await this.ensureMembership(userId, tableId);
+
+    return this.findTableSubmissions(
+      tableId,
+      query,
+      membership.role === TableMemberRole.MASTER ? undefined : userId
+    );
+  }
+
+  static async listMyTableSubmissions(
+    userId: string,
+    tableId: string,
+    query: ListTableSubmissionsQuery
+  ) {
+    await this.ensureMembership(userId, tableId);
+    return this.findTableSubmissions(tableId, query, userId);
+  }
+
   static async reviewMissionSubmission(
     userId: string,
     tableId: string,
@@ -875,14 +1325,50 @@ export class TableService {
     return updatedSubmission;
   }
 
-  static async listTimelineEvents(userId: string, tableId: string) {
+  static async listTimelineEvents(
+    userId: string,
+    tableId: string,
+    query: ListTableTimelineQuery
+  ) {
     await this.ensureMembership(userId, tableId);
 
-    return prisma.tableTimelineEvent.findMany({
+    const events = await prisma.tableTimelineEvent.findMany({
       where: { tableId },
-      include: this.timelineEventInclude(),
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        tableId: true,
+        characterId: true,
+        title: true,
+        description: true,
+        type: true,
+        createdAt: true,
+        createdBy: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+          },
+        },
+        character: {
+          select: {
+            id: true,
+            name: true,
+            tableId: true,
+            class: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
     });
+
+    return this.toCursorPage(events, query.limit);
   }
 
   static async createTimelineEvent(
@@ -1185,6 +1671,85 @@ export class TableService {
     } satisfies Prisma.TableTimelineEventInclude;
   }
 
+  private static toCursorPage<T extends { id: string }>(records: T[], limit: number) {
+    const hasNextPage = records.length > limit;
+    const items = hasNextPage ? records.slice(0, limit) : records;
+
+    return {
+      items,
+      nextCursor: hasNextPage ? items[items.length - 1]?.id ?? null : null,
+    };
+  }
+
+  private static async findTableSubmissions(
+    tableId: string,
+    query: ListTableSubmissionsQuery,
+    userId?: string
+  ) {
+    const submissions = await prisma.tableMissionSubmission.findMany({
+      where: {
+        mission: { tableId },
+        ...(query.status ? { status: query.status } : {}),
+        ...(userId ? { userId } : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: query.limit + 1,
+      ...(query.cursor
+        ? {
+            cursor: { id: query.cursor },
+            skip: 1,
+          }
+        : {}),
+      select: {
+        id: true,
+        status: true,
+        content: true,
+        masterNote: true,
+        createdAt: true,
+        mission: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        character: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const hasNextPage = submissions.length > query.limit;
+    const page = hasNextPage ? submissions.slice(0, query.limit) : submissions;
+
+    return {
+      items: page.map((submission) => ({
+        id: submission.id,
+        status: submission.status,
+        content: submission.content,
+        masterNote: submission.masterNote,
+        createdAt: submission.createdAt,
+        mission: submission.mission,
+        character: submission.character,
+        user: {
+          id: submission.user.id,
+          name: submission.user.nome,
+          email: submission.user.email,
+        },
+      })),
+      nextCursor: hasNextPage ? page[page.length - 1]?.id ?? null : null,
+    };
+  }
+
   private static async createTimelineEventSafely(input: {
     tableId: string;
     characterId?: string;
@@ -1295,6 +1860,13 @@ export class TableService {
       ...(isMaster ? { joinCode: table.joinCode, code: table.joinCode } : {}),
       maxPlayers: table.maxPlayers,
       playerCount,
+      counts: {
+        members: activeMembers.length,
+        characters: table._count.characters,
+        characterReviews: table._count.characterReviews,
+        missions: table._count.missions,
+        timelineEvents: table._count.timelineEvents,
+      },
       createdAt: table.createdAt,
       updatedAt: table.updatedAt,
       master: table.master,

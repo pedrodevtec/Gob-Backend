@@ -25,7 +25,8 @@
     "test:market": "node --require ts-node/register src/Modules/shop/__tests__/shop.market.runner.ts",
     "test:table-overview": "node --require ts-node/register src/Modules/tables/__tests__/table.overview.runner.ts",
     "test:ai": "node --require ts-node/register src/Modules/ai/__tests__/ai.client.runner.ts",
-    "test": "npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai",
+    "test:middleware": "node --require ts-node/register src/middleware/__tests__/middleware.runner.ts",
+    "test": "npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:middleware",
     "start": "node dist/server.js"
   },
   "prisma": {

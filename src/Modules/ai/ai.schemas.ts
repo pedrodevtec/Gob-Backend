@@ -9,14 +9,14 @@ export const worldSummaryOutputSchema: JsonSchema = {
     suggestedSummary: conciseString,
     suggestedTone: conciseString,
     suggestedRules: conciseString,
-    suggestedCharacterCriteria: conciseString,
+    suggestedCharacterCreationCriteria: conciseString,
   },
   required: [
     "suggestedTitle",
     "suggestedSummary",
     "suggestedTone",
     "suggestedRules",
-    "suggestedCharacterCriteria",
+    "suggestedCharacterCreationCriteria",
   ],
   additionalProperties: false,
 };

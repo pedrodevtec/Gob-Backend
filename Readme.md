@@ -1275,6 +1275,8 @@ Se definir `SEED_ADMIN_EMAIL` no ambiente e esse usuario ja existir, o seed prom
 
 - Todas as rotas protegidas exigem `Authorization: Bearer <token>`
 - O backend usa validacao de payload e tratamento global de erro
+- Protecao de API e logs de duracao estao documentados em
+  `docs/api-protection-observability.md`
 - O fluxo de pagamento ainda esta desacoplado do gateway; o endpoint de webhook aceita confirmacao manual/integrada
 - O endpoint de `market` em gameplay continua existindo como acao rapida de jornada e nao substitui o mercado de compra e venda da loja
 - Para producao, ajuste `CORS_ORIGIN` e `PAYMENT_WEBHOOK_SECRET`

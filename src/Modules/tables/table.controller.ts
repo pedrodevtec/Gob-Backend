@@ -2,6 +2,13 @@ import { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/http";
 import { requireString, requireUserId } from "../../utils/validation";
+import {
+  getListCharacterTraitsQuery,
+  getListTableCharactersQuery,
+  getListTableMissionsQuery,
+  getListTableSubmissionsQuery,
+  getListTableTimelineQuery,
+} from "./table.schema";
 import { TableService } from "./table.service";
 
 export const createTable = asyncHandler(async (req: Request, res: Response) => {
@@ -14,6 +21,12 @@ export const listTables = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tables = await TableService.listTables(userId);
   sendSuccess(res, 200, { tables });
+});
+
+export const getTablesDashboard = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const dashboard = await TableService.getDashboard(userId);
+  sendSuccess(res, 200, dashboard);
 });
 
 export const getTable = asyncHandler(async (req: Request, res: Response) => {
@@ -60,8 +73,15 @@ export const createTableCharacter = asyncHandler(async (req: Request, res: Respo
 export const listTableCharacters = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
-  const characters = await TableService.listCharacters(userId, tableId);
-  sendSuccess(res, 200, { characters });
+  const result = await TableService.listCharacters(
+    userId,
+    tableId,
+    getListTableCharactersQuery(req)
+  );
+  sendSuccess(res, 200, {
+    characters: result.items,
+    ...result,
+  });
 });
 
 export const reviewTableCharacter = asyncHandler(async (req: Request, res: Response) => {
@@ -76,8 +96,16 @@ export const listCharacterTraits = asyncHandler(async (req: Request, res: Respon
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
   const characterId = requireString(req.params.characterId, "characterId");
-  const traits = await TableService.listCharacterTraits(userId, tableId, characterId);
-  sendSuccess(res, 200, { traits });
+  const result = await TableService.listCharacterTraits(
+    userId,
+    tableId,
+    characterId,
+    getListCharacterTraitsQuery(req)
+  );
+  sendSuccess(res, 200, {
+    traits: result.items,
+    ...result,
+  });
 });
 
 export const createCharacterTrait = asyncHandler(async (req: Request, res: Response) => {
@@ -107,8 +135,15 @@ export const createTableMission = asyncHandler(async (req: Request, res: Respons
 export const listTableMissions = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
-  const missions = await TableService.listMissions(userId, tableId);
-  sendSuccess(res, 200, { missions });
+  const result = await TableService.listMissions(
+    userId,
+    tableId,
+    getListTableMissionsQuery(req)
+  );
+  sendSuccess(res, 200, {
+    missions: result.items,
+    ...result,
+  });
 });
 
 export const getTableMission = asyncHandler(async (req: Request, res: Response) => {
@@ -143,6 +178,34 @@ export const listMissionSubmissions = asyncHandler(async (req: Request, res: Res
   sendSuccess(res, 200, { submissions });
 });
 
+export const listTableSubmissions = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const result = await TableService.listTableSubmissions(
+    userId,
+    tableId,
+    getListTableSubmissionsQuery(req)
+  );
+  sendSuccess(res, 200, {
+    submissions: result.items,
+    ...result,
+  });
+});
+
+export const listMyTableSubmissions = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const result = await TableService.listMyTableSubmissions(
+    userId,
+    tableId,
+    getListTableSubmissionsQuery(req)
+  );
+  sendSuccess(res, 200, {
+    submissions: result.items,
+    ...result,
+  });
+});
+
 export const reviewMissionSubmission = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
@@ -161,8 +224,15 @@ export const reviewMissionSubmission = asyncHandler(async (req: Request, res: Re
 export const listTimelineEvents = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
-  const events = await TableService.listTimelineEvents(userId, tableId);
-  sendSuccess(res, 200, { events });
+  const result = await TableService.listTimelineEvents(
+    userId,
+    tableId,
+    getListTableTimelineQuery(req)
+  );
+  sendSuccess(res, 200, {
+    events: result.items,
+    ...result,
+  });
 });
 
 export const createTimelineEvent = asyncHandler(async (req: Request, res: Response) => {

@@ -1,4 +1,15 @@
 import assert from "node:assert/strict";
+import { AppError } from "../../../errors/AppError";
+import {
+  getListTableCharactersQuery,
+  getListTableMissionsQuery,
+  getListTableTimelineQuery,
+  getListTableSubmissionsQuery,
+  validateListTableCharacters,
+  validateListTableMissions,
+  validateListTableTimeline,
+  validateListTableSubmissions,
+} from "../table.schema";
 import { buildMasterOverviewGuidance } from "../table.overview";
 
 const baseProgress = {
@@ -67,6 +78,94 @@ test("recomenda continuar campanha quando nao ha pendencias", () => {
 
   assert.equal(result.nextRecommendedAction.key, "CONTINUE_CAMPAIGN");
   assert.equal(result.onboardingChecklist.every((item) => item.done), true);
+});
+
+test("normaliza filtros e paginacao das submissoes agregadas", () => {
+  const request = {
+    query: {
+      status: "submitted",
+      cursor: "submission-20",
+      limit: "25",
+    },
+  } as any;
+
+  validateListTableSubmissions(request);
+
+  assert.deepEqual(getListTableSubmissionsQuery(request), {
+    status: "SUBMITTED",
+    cursor: "submission-20",
+    limit: 25,
+  });
+});
+
+test("usa limite padrao nas submissoes agregadas", () => {
+  const request = { query: {} } as any;
+
+  validateListTableSubmissions(request);
+
+  assert.deepEqual(getListTableSubmissionsQuery(request), {
+    status: undefined,
+    cursor: undefined,
+    limit: 20,
+  });
+});
+
+test("rejeita limite acima do maximo nas submissoes agregadas", () => {
+  const request = { query: { limit: "51" } } as any;
+
+  assert.throws(
+    () => validateListTableSubmissions(request),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === "VALIDATION_ERROR" &&
+      error.message === "Campo limit deve estar entre 1 e 50."
+  );
+});
+
+test("normaliza filtro de review e paginacao de personagens", () => {
+  const request = {
+    query: {
+      reviewStatus: "pending",
+      cursor: "character-20",
+      limit: "10",
+    },
+  } as any;
+
+  validateListTableCharacters(request);
+
+  assert.deepEqual(getListTableCharactersQuery(request), {
+    reviewStatus: "PENDING",
+    cursor: "character-20",
+    limit: 10,
+  });
+});
+
+test("normaliza filtro e paginacao de missoes", () => {
+  const request = {
+    query: {
+      status: "active",
+      limit: "50",
+    },
+  } as any;
+
+  validateListTableMissions(request);
+
+  assert.deepEqual(getListTableMissionsQuery(request), {
+    status: "ACTIVE",
+    cursor: undefined,
+    limit: 50,
+  });
+});
+
+test("timeline usa paginacao padrao", () => {
+  const request = { query: {} } as any;
+
+  validateListTableTimeline(request);
+
+  assert.deepEqual(getListTableTimelineQuery(request), {
+    cursor: undefined,
+    limit: 20,
+  });
 });
 
 console.log("Table overview tests completed.");

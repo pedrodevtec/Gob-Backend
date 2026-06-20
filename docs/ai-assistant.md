@@ -33,12 +33,15 @@ Every AI endpoint requires an active table `MASTER` membership. The table
 master access.
 
 The AI router also applies JWT authentication directly and limits each
-authenticated user to 12 AI requests per minute. This is defense in depth and
-does not replace the table-specific MASTER check.
+authenticated user and table pair to 12 AI requests per minute. This is applied
+in addition to the common authenticated/write API limits. It is defense in
+depth and does not replace the table-specific MASTER check.
 
 ## Data and cost controls
 
 - Calls happen only when the frontend explicitly invokes an endpoint.
+- The backend does not schedule automatic AI calls or automatic generation
+  retries.
 - Responses use strict JSON schemas and small output-token limits.
 - GPT-5 nano uses minimal reasoning effort for these lightweight drafts.
 - Requests send only table-relevant context.

@@ -4,6 +4,17 @@ import { env } from "../config/env";
 import { AppError } from "../errors/AppError";
 import { AuthTokenPayload } from "../types/auth";
 import { permissionDebug } from "../utils/permissionDebug";
+import { createRateLimiter } from "./rateLimit";
+
+const authenticatedApiLimiter = createRateLimiter(240, 60_000, {
+  scope: "authenticated-api",
+  keyGenerator: (req) => req.user?.id ?? req.ip ?? "unknown",
+});
+const authenticatedWriteLimiter = createRateLimiter(80, 60_000, {
+  scope: "authenticated-api-write",
+  keyGenerator: (req) => req.user?.id ?? req.ip ?? "unknown",
+});
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export default function auth(req: Request, _res: Response, next: NextFunction): void {
   try {
@@ -38,7 +49,19 @@ export default function auth(req: Request, _res: Response, next: NextFunction): 
       legacyTokenRole: decoded.role ?? null,
       normalizedAccountRole,
     });
-    next();
+    authenticatedApiLimiter(req, _res, (rateLimitError?: unknown) => {
+      if (rateLimitError) {
+        next(rateLimitError);
+        return;
+      }
+
+      if (!WRITE_METHODS.has(req.method.toUpperCase())) {
+        next();
+        return;
+      }
+
+      authenticatedWriteLimiter(req, _res, next);
+    });
   } catch (error) {
     if (error instanceof AppError) {
       next(error);

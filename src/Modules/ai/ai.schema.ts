@@ -27,21 +27,23 @@ export const validateWorldSummarySuggestion = (req: Request): void => {
 
   if (body.currentWorld !== undefined) {
     const world = requireObject(body.currentWorld, "currentWorld");
+    const characterCreationCriteria =
+      world.characterCreationCriteria ?? world.characterCriteria;
     currentWorld = {
       title: optionalWorldField(world.title, "currentWorld.title", 160),
       summary: optionalWorldField(world.summary, "currentWorld.summary", 4000),
       tone: optionalWorldField(world.tone, "currentWorld.tone", 200),
       rules: optionalWorldField(world.rules, "currentWorld.rules", 3000),
-      characterCriteria: optionalWorldField(
-        world.characterCriteria,
-        "currentWorld.characterCriteria",
+      characterCreationCriteria: optionalWorldField(
+        characterCreationCriteria,
+        "currentWorld.characterCreationCriteria",
         3000
       ),
     };
   }
 
   req.body = {
-    prompt: optionalString(body.prompt, "prompt", 1, 1000),
+    prompt: optionalString(body.prompt ?? body.instruction, "prompt", 1, 1000),
     currentWorld,
   } satisfies WorldSummaryInput;
 };
@@ -79,6 +81,17 @@ export const validateMissionIdeas = (req: Request): void => {
 
 export const validateTraitSuggestions = (req: Request): void => {
   const body = getBody(req);
+  if (
+    typeof body.characterId !== "string" ||
+    body.characterId.trim().length === 0
+  ) {
+    throw new AppError(
+      400,
+      "characterId e obrigatorio para gerar sugestoes de traits.",
+      "CHARACTER_ID_REQUIRED"
+    );
+  }
+
   req.body = {
     characterId: requireString(body.characterId, "characterId", 1, 100),
     instruction: optionalString(body.instruction, "instruction", 1, 1000),

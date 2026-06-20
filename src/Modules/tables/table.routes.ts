@@ -12,12 +12,15 @@ import {
   createTimelineEvent,
   deleteCharacterTrait,
   getTable,
+  getTablesDashboard,
   getMasterOverview,
   getTableMission,
   getTableWorld,
   joinTable,
   listCharacterTraits,
   listMissionSubmissions,
+  listMyTableSubmissions,
+  listTableSubmissions,
   listTableCharacters,
   listTableMissions,
   listTables,
@@ -34,8 +37,13 @@ import {
   validateCreateTableMission,
   validateCreateTimelineEvent,
   validateJoinTable,
+  validateListCharacterTraits,
+  validateListTableCharacters,
+  validateListTableMissions,
   validateReviewMissionSubmission,
   validateReviewTableCharacter,
+  validateListTableSubmissions,
+  validateListTableTimeline,
   validateUpdateTableMission,
   validateUpsertTableWorld,
 } from "./table.schema";
@@ -47,17 +55,26 @@ router.use(auth);
 
 router.post("/", validate(validateCreateTable), createTable);
 router.get("/", listTables);
+router.get("/dashboard", getTablesDashboard);
 router.get("/:id", getTable);
 router.post("/join", validate(validateJoinTable), joinTable);
 router.get("/:tableId/master/overview", getMasterOverview);
 router.post("/:tableId/characters", validate(validateCreateCharacter), createTableCharacter);
-router.get("/:tableId/characters", listTableCharacters);
+router.get(
+  "/:tableId/characters",
+  validate(validateListTableCharacters),
+  listTableCharacters
+);
 router.patch(
   "/:tableId/characters/:characterId/review",
   validate(validateReviewTableCharacter),
   reviewTableCharacter
 );
-router.get("/:tableId/characters/:characterId/traits", listCharacterTraits);
+router.get(
+  "/:tableId/characters/:characterId/traits",
+  validate(validateListCharacterTraits),
+  listCharacterTraits
+);
 router.post(
   "/:tableId/characters/:characterId/traits",
   validate(validateCreateCharacterTrait),
@@ -65,7 +82,11 @@ router.post(
 );
 router.delete("/:tableId/characters/:characterId/traits/:traitId", deleteCharacterTrait);
 router.post("/:tableId/missions", validate(validateCreateTableMission), createTableMission);
-router.get("/:tableId/missions", listTableMissions);
+router.get(
+  "/:tableId/missions",
+  validate(validateListTableMissions),
+  listTableMissions
+);
 router.get("/:tableId/missions/:missionId", getTableMission);
 router.patch("/:tableId/missions/:missionId", validate(validateUpdateTableMission), updateTableMission);
 router.post(
@@ -74,12 +95,26 @@ router.post(
   createMissionSubmission
 );
 router.get("/:tableId/missions/:missionId/submissions", listMissionSubmissions);
+router.get(
+  "/:tableId/submissions/me",
+  validate(validateListTableSubmissions),
+  listMyTableSubmissions
+);
+router.get(
+  "/:tableId/submissions",
+  validate(validateListTableSubmissions),
+  listTableSubmissions
+);
 router.patch(
   "/:tableId/missions/:missionId/submissions/:submissionId/review",
   validate(validateReviewMissionSubmission),
   reviewMissionSubmission
 );
-router.get("/:tableId/timeline", listTimelineEvents);
+router.get(
+  "/:tableId/timeline",
+  validate(validateListTableTimeline),
+  listTimelineEvents
+);
 router.post("/:tableId/timeline", validate(validateCreateTimelineEvent), createTimelineEvent);
 router.get("/:tableId/world", getTableWorld);
 router.put("/:tableId/world", validate(validateUpsertTableWorld), upsertTableWorld);

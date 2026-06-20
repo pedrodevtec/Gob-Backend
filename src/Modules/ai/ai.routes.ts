@@ -17,7 +17,11 @@ import {
 import { aiMasterOnly } from "./ai.middleware";
 
 const router = Router({ mergeParams: true });
-const aiRateLimiter = createRateLimiter(12, 60_000);
+const aiRateLimiter = createRateLimiter(12, 60_000, {
+  scope: "tables-ai",
+  keyGenerator: (req) =>
+    `${req.user?.id ?? req.ip ?? "unknown"}:${req.params.tableId ?? "unknown-table"}`,
+});
 
 router.use(auth);
 router.use(aiRateLimiter);
