@@ -43,6 +43,13 @@ export const getMasterOverview = asyncHandler(async (req: Request, res: Response
   sendSuccess(res, 200, { overview });
 });
 
+export const getPlayerOverview = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const overview = await TableService.getPlayerOverview(userId, tableId);
+  sendSuccess(res, 200, { overview });
+});
+
 export const joinTable = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const table = await TableService.joinTable(userId, req.body);
@@ -68,6 +75,13 @@ export const createTableCharacter = asyncHandler(async (req: Request, res: Respo
   const tableId = requireString(req.params.tableId, "tableId");
   const result = await TableService.createCharacter(userId, tableId, req.body);
   sendSuccess(res, 201, result, "Personagem enviado para revisao da mesa.");
+});
+
+export const getMyTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const character = await TableService.getMyCharacter(userId, tableId);
+  sendSuccess(res, 200, { character });
 });
 
 export const listTableCharacters = asyncHandler(async (req: Request, res: Response) => {
@@ -114,6 +128,55 @@ export const createCharacterTrait = asyncHandler(async (req: Request, res: Respo
   const characterId = requireString(req.params.characterId, "characterId");
   const trait = await TableService.createCharacterTrait(userId, tableId, characterId, req.body);
   sendSuccess(res, 201, { trait }, "Trait criada com sucesso.");
+});
+
+export const listCharacterTraitSuggestions = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const suggestions = await TableService.listCharacterTraitSuggestions(userId, tableId, characterId);
+  sendSuccess(res, 200, { suggestions });
+});
+
+export const createCharacterTraitSuggestion = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const suggestion = await TableService.createCharacterTraitSuggestion(
+    userId,
+    tableId,
+    characterId,
+    req.body
+  );
+  sendSuccess(res, 201, { suggestion }, "Sugestao de trait criada com sucesso.");
+});
+
+export const applyCharacterTraitSuggestion = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const suggestionId = requireString(req.params.suggestionId, "suggestionId");
+  const result = await TableService.applyCharacterTraitSuggestion(
+    userId,
+    tableId,
+    characterId,
+    suggestionId
+  );
+  sendSuccess(res, 200, result, "Sugestao aplicada com sucesso.");
+});
+
+export const dismissCharacterTraitSuggestion = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const suggestionId = requireString(req.params.suggestionId, "suggestionId");
+  const suggestion = await TableService.dismissCharacterTraitSuggestion(
+    userId,
+    tableId,
+    characterId,
+    suggestionId
+  );
+  sendSuccess(res, 200, { suggestion }, "Sugestao descartada com sucesso.");
 });
 
 export const deleteCharacterTrait = asyncHandler(async (req: Request, res: Response) => {

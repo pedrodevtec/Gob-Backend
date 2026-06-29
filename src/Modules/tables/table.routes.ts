@@ -4,20 +4,26 @@ import { validate } from "../../middleware/validate";
 import { validateCreateCharacter } from "../characters/character.schema";
 import aiRoutes from "../ai/ai.routes";
 import {
+  applyCharacterTraitSuggestion,
   createCharacterTrait,
+  createCharacterTraitSuggestion,
   createMissionSubmission,
   createTableCharacter,
   createTableMission,
   createTable,
   createTimelineEvent,
   deleteCharacterTrait,
+  dismissCharacterTraitSuggestion,
+  getMyTableCharacter,
   getTable,
   getTablesDashboard,
   getMasterOverview,
+  getPlayerOverview,
   getTableMission,
   getTableWorld,
   joinTable,
   listCharacterTraits,
+  listCharacterTraitSuggestions,
   listMissionSubmissions,
   listMyTableSubmissions,
   listTableSubmissions,
@@ -32,6 +38,7 @@ import {
 } from "./table.controller";
 import {
   validateCreateCharacterTrait,
+  validateCreateCharacterTraitSuggestion,
   validateCreateMissionSubmission,
   validateCreateTable,
   validateCreateTableMission,
@@ -59,7 +66,9 @@ router.get("/dashboard", getTablesDashboard);
 router.get("/:id", getTable);
 router.post("/join", validate(validateJoinTable), joinTable);
 router.get("/:tableId/master/overview", getMasterOverview);
+router.get("/:tableId/player/overview", getPlayerOverview);
 router.post("/:tableId/characters", validate(validateCreateCharacter), createTableCharacter);
+router.get("/:tableId/characters/me", getMyTableCharacter);
 router.get(
   "/:tableId/characters",
   validate(validateListTableCharacters),
@@ -79,6 +88,23 @@ router.post(
   "/:tableId/characters/:characterId/traits",
   validate(validateCreateCharacterTrait),
   createCharacterTrait
+);
+router.get(
+  "/:tableId/characters/:characterId/trait-suggestions",
+  listCharacterTraitSuggestions
+);
+router.post(
+  "/:tableId/characters/:characterId/trait-suggestions",
+  validate(validateCreateCharacterTraitSuggestion),
+  createCharacterTraitSuggestion
+);
+router.patch(
+  "/:tableId/characters/:characterId/trait-suggestions/:suggestionId/apply",
+  applyCharacterTraitSuggestion
+);
+router.patch(
+  "/:tableId/characters/:characterId/trait-suggestions/:suggestionId/dismiss",
+  dismissCharacterTraitSuggestion
 );
 router.delete("/:tableId/characters/:characterId/traits/:traitId", deleteCharacterTrait);
 router.post("/:tableId/missions", validate(validateCreateTableMission), createTableMission);

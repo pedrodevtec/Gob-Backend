@@ -1,6 +1,7 @@
 import { Request } from "express";
 import {
   CharacterReviewStatus,
+  CharacterTraitSuggestionSource,
   CharacterTraitType,
   Prisma,
   TableMissionStatus,
@@ -16,6 +17,7 @@ import {
 } from "../../utils/validation";
 import {
   CreateTableInput,
+  CreateCharacterTraitSuggestionInput,
   CursorPaginationQuery,
   JoinTableInput,
   ListCharacterTraitsQuery,
@@ -43,6 +45,7 @@ const MISSION_STATUSES: TableMissionStatus[] = [
   "COMPLETED",
   "ARCHIVED",
 ];
+const TRAIT_SUGGESTION_SOURCES: CharacterTraitSuggestionSource[] = ["AI", "MASTER"];
 
 const parseCursorPagination = (req: Request): CursorPaginationQuery => {
   const rawCursor = req.query.cursor;
@@ -217,6 +220,32 @@ export const validateCreateCharacterTrait = (req: Request): void => {
     name: requireString(body.name, "name", 2, 80),
     description: optionalString(body.description, "description", 1, 1000),
   };
+};
+
+export const validateCreateCharacterTraitSuggestion = (req: Request): void => {
+  const body = getBody(req);
+  const type = requireString(body.type, "type", 7, 20) as CharacterTraitType;
+  const source =
+    body.source === undefined
+      ? undefined
+      : (requireString(body.source, "source", 2, 20).toUpperCase() as CharacterTraitSuggestionSource);
+
+  if (!["POSITIVE", "NEGATIVE", "NEUTRAL"].includes(type)) {
+    throw new AppError(400, "Tipo de sugestao invalido.", "VALIDATION_ERROR");
+  }
+
+  if (source && !TRAIT_SUGGESTION_SOURCES.includes(source)) {
+    throw new AppError(400, "Fonte de sugestao invalida.", "VALIDATION_ERROR");
+  }
+
+  req.body = {
+    type,
+    name: requireString(body.name, "name", 2, 80),
+    description: optionalString(body.description, "description", 1, 1000),
+    category: optionalString(body.category, "category", 1, 80),
+    value: optionalString(body.value, "value", 1, 500),
+    source,
+  } satisfies CreateCharacterTraitSuggestionInput;
 };
 
 export const validateCreateTableMission = (req: Request): void => {

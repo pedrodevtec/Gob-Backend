@@ -1,5 +1,6 @@
 import {
   CharacterReviewStatus,
+  CharacterTraitSuggestionStatus,
   Prisma,
   TableMemberRole,
   TableMemberStatus,
@@ -16,6 +17,7 @@ import { permissionDebug } from "../../utils/permissionDebug";
 import { buildMasterOverviewGuidance } from "./table.overview";
 import {
   CreateTableCharacterInput,
+  CreateCharacterTraitSuggestionInput,
   CreateCharacterTraitInput,
   CreateMissionSubmissionInput,
   CreateTableInput,
@@ -718,6 +720,243 @@ export class TableService {
     return overview;
   }
 
+  static async getPlayerOverview(userId: string, tableId: string) {
+    const roleContext = await this.getTableRoleContext(tableId, userId);
+    const [table, character] = await prisma.$transaction([
+      prisma.table.findUnique({
+        where: { id: tableId },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          world: true,
+        },
+      }),
+      prisma.character.findFirst({
+        where: { tableId, userId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          createdAt: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          reviews: {
+            where: { tableId },
+            orderBy: { updatedAt: "desc" },
+            take: 1,
+            select: {
+              status: true,
+              masterFeedback: true,
+              updatedAt: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (!table) {
+      throw new AppError(404, "Mesa nao encontrada.", "TABLE_NOT_FOUND");
+    }
+
+    const characterId = character?.id;
+    const [appliedTraits, traitSuggestions, activeMissions, recentSubmissions, recentTimeline] =
+      await prisma.$transaction([
+        characterId
+          ? prisma.characterTrait.findMany({
+              where: { tableId, characterId },
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              select: {
+                id: true,
+                type: true,
+                name: true,
+                description: true,
+                createdAt: true,
+              },
+            })
+          : prisma.characterTrait.findMany({
+              where: { id: { in: [] } },
+              select: {
+                id: true,
+                type: true,
+                name: true,
+                description: true,
+                createdAt: true,
+              },
+            }),
+        characterId
+          ? prisma.characterTraitSuggestion.findMany({
+              where: {
+                tableId,
+                characterId,
+                status: CharacterTraitSuggestionStatus.SUGGESTED,
+              },
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              take: 5,
+              select: {
+                id: true,
+                type: true,
+                name: true,
+                description: true,
+                category: true,
+                value: true,
+                source: true,
+                status: true,
+                createdAt: true,
+              },
+            })
+          : prisma.characterTraitSuggestion.findMany({
+              where: { id: { in: [] } },
+              select: {
+                id: true,
+                type: true,
+                name: true,
+                description: true,
+                category: true,
+                value: true,
+                source: true,
+                status: true,
+                createdAt: true,
+              },
+            }),
+        prisma.tableMission.findMany({
+          where: { tableId, status: TableMissionStatus.ACTIVE },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 5,
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            objective: true,
+            isRequired: true,
+            status: true,
+            dueDate: true,
+            createdAt: true,
+            submissions: {
+              where: { characterId: characterId ?? "__no-character__" },
+              select: {
+                id: true,
+                status: true,
+                masterNote: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
+          },
+        }),
+        prisma.tableMissionSubmission.findMany({
+          where: {
+            userId,
+            mission: { tableId },
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 5,
+          select: {
+            id: true,
+            status: true,
+            content: true,
+            masterNote: true,
+            createdAt: true,
+            updatedAt: true,
+            mission: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+            character: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        }),
+        prisma.tableTimelineEvent.findMany({
+          where: { tableId },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 5,
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            type: true,
+            createdAt: true,
+            character: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+    const review = character?.reviews[0] ?? null;
+    const reviewStatus = review?.status ?? null;
+    const missionsWithoutSubmission = activeMissions.filter(
+      (mission) => mission.submissions.length === 0
+    );
+    const pendingReviewSubmissions = recentSubmissions.filter(
+      (submission) => submission.status === TableMissionSubmissionStatus.SUBMITTED
+    );
+    const completedSubmissions = recentSubmissions.filter(
+      (submission) => submission.status !== TableMissionSubmissionStatus.SUBMITTED
+    );
+
+    return {
+      table: {
+        id: table.id,
+        name: table.name,
+        description: table.description,
+        currentUserRole: roleContext.role,
+        isMaster: roleContext.isMaster,
+        memberStatus: roleContext.status,
+      },
+      world: this.formatWorld(table.world),
+      character: character
+        ? {
+            id: character.id,
+            name: character.name,
+            className: character.class.name,
+            level: character.level,
+            reviewStatus,
+            masterFeedback: review?.masterFeedback ?? null,
+            createdAt: character.createdAt,
+          }
+        : null,
+      traits: {
+        applied: appliedTraits,
+        suggestions: traitSuggestions,
+      },
+      missions: {
+        active: activeMissions,
+        completed: completedSubmissions.map((submission) => submission.mission),
+        pendingReview: pendingReviewSubmissions.map((submission) => submission.mission),
+      },
+      submissions: {
+        recent: recentSubmissions,
+      },
+      timeline: {
+        recent: recentTimeline,
+      },
+      nextRecommendedAction: this.buildPlayerNextAction({
+        hasCharacter: Boolean(character),
+        reviewStatus,
+        hasActiveMissionWithoutSubmission: missionsWithoutSubmission.length > 0,
+        hasPendingReviewSubmission: pendingReviewSubmissions.length > 0,
+        hasTimeline: recentTimeline.length > 0,
+      }),
+    };
+  }
+
   static async joinTable(userId: string, input: JoinTableInput) {
     const joinCode = input.joinCode.trim().toUpperCase();
     const table = await prisma.table.findUnique({
@@ -825,13 +1064,13 @@ export class TableService {
       throw new AppError(404, "Mundo da mesa ainda nao foi criado.", "TABLE_WORLD_NOT_FOUND");
     }
 
-    return world;
+    return this.formatWorld(world);
   }
 
   static async upsertWorld(userId: string, tableId: string, input: UpsertTableWorldInput) {
     await this.ensureMaster(userId, tableId);
 
-    return prisma.tableWorld.upsert({
+    const world = await prisma.tableWorld.upsert({
       where: { tableId },
       create: {
         tableId,
@@ -849,6 +1088,8 @@ export class TableService {
         characterCreationCriteria: input.characterCreationCriteria ?? Prisma.JsonNull,
       },
     });
+
+    return this.formatWorld(world);
   }
 
   static async createCharacter(userId: string, tableId: string, input: CreateTableCharacterInput) {
@@ -871,6 +1112,62 @@ export class TableService {
         review,
       };
     });
+  }
+
+  static async getMyCharacter(userId: string, tableId: string) {
+    await this.ensureMembership(userId, tableId);
+
+    const character = await prisma.character.findFirst({
+      where: { tableId, userId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        tableId: true,
+        userId: true,
+        name: true,
+        level: true,
+        status: true,
+        createdAt: true,
+        class: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
+        reviews: {
+          where: { tableId },
+          orderBy: { updatedAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            masterFeedback: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!character) {
+      return null;
+    }
+
+    const review = character.reviews[0] ?? null;
+    return {
+      id: character.id,
+      tableId: character.tableId,
+      userId: character.userId,
+      name: character.name,
+      level: character.level,
+      status: character.status,
+      class: character.class,
+      reviewStatus: review?.status ?? null,
+      masterFeedback: review?.masterFeedback ?? null,
+      review,
+      createdAt: character.createdAt,
+    };
   }
 
   static async listCharacters(
@@ -1070,6 +1367,146 @@ export class TableService {
     });
   }
 
+  static async listCharacterTraitSuggestions(
+    userId: string,
+    tableId: string,
+    characterId: string
+  ) {
+    const membership = await this.ensureMembership(userId, tableId);
+    const character = await this.ensureCharacterBelongsToTable(characterId, tableId);
+
+    if (membership.role !== TableMemberRole.MASTER && character.userId !== userId) {
+      throw new AppError(403, "Acesso restrito ao personagem da mesa.", "TABLE_CHARACTER_FORBIDDEN");
+    }
+
+    return prisma.characterTraitSuggestion.findMany({
+      where: { tableId, characterId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        tableId: true,
+        characterId: true,
+        type: true,
+        name: true,
+        description: true,
+        category: true,
+        value: true,
+        source: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        createdBy: {
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }
+
+  static async createCharacterTraitSuggestion(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    input: CreateCharacterTraitSuggestionInput
+  ) {
+    await this.ensureTableMaster(tableId, userId);
+    await this.ensureCharacterBelongsToTable(characterId, tableId);
+
+    return prisma.characterTraitSuggestion.create({
+      data: {
+        tableId,
+        characterId,
+        type: input.type,
+        name: input.name,
+        description: input.description ?? null,
+        category: input.category ?? null,
+        value: input.value ?? null,
+        source: input.source ?? "MASTER",
+        createdById: userId,
+      },
+    });
+  }
+
+  static async applyCharacterTraitSuggestion(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    suggestionId: string
+  ) {
+    await this.ensureTableMaster(tableId, userId);
+    await this.ensureCharacterBelongsToTable(characterId, tableId);
+
+    const suggestion = await prisma.characterTraitSuggestion.findFirst({
+      where: { id: suggestionId, tableId, characterId },
+    });
+
+    if (!suggestion) {
+      throw new AppError(404, "Sugestao de trait nao encontrada.", "CHARACTER_TRAIT_SUGGESTION_NOT_FOUND");
+    }
+
+    if (suggestion.status !== CharacterTraitSuggestionStatus.SUGGESTED) {
+      throw new AppError(409, "Sugestao de trait ja foi processada.", "CHARACTER_TRAIT_SUGGESTION_ALREADY_PROCESSED");
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const trait = await tx.characterTrait.create({
+        data: {
+          tableId,
+          characterId,
+          type: suggestion.type,
+          name: suggestion.name,
+          description: suggestion.description,
+          createdById: userId,
+        },
+      });
+
+      const updatedSuggestion = await tx.characterTraitSuggestion.update({
+        where: { id: suggestion.id },
+        data: { status: CharacterTraitSuggestionStatus.APPLIED },
+      });
+
+      return { trait, suggestion: updatedSuggestion };
+    });
+
+    await this.createTimelineEventSafely({
+      tableId,
+      characterId,
+      createdById: userId,
+      title: "Trait aplicada",
+      description: result.trait.name,
+      type: "MASTER_NOTE",
+    });
+
+    return result;
+  }
+
+  static async dismissCharacterTraitSuggestion(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    suggestionId: string
+  ) {
+    await this.ensureTableMaster(tableId, userId);
+    await this.ensureCharacterBelongsToTable(characterId, tableId);
+
+    const suggestion = await prisma.characterTraitSuggestion.findFirst({
+      where: { id: suggestionId, tableId, characterId },
+      select: { id: true },
+    });
+
+    if (!suggestion) {
+      throw new AppError(404, "Sugestao de trait nao encontrada.", "CHARACTER_TRAIT_SUGGESTION_NOT_FOUND");
+    }
+
+    return prisma.characterTraitSuggestion.update({
+      where: { id: suggestion.id },
+      data: { status: CharacterTraitSuggestionStatus.DISMISSED },
+    });
+  }
+
   static async deleteCharacterTrait(
     userId: string,
     tableId: string,
@@ -1221,7 +1658,20 @@ export class TableService {
   ) {
     await this.ensureMembership(userId, tableId);
     await this.getMissionForTable(tableId, missionId);
-    await this.ensureApprovedTableCharacter(userId, tableId, input.characterId);
+    await this.ensureApprovedTableCharacter(input.characterId, tableId, userId);
+
+    const existingOpenSubmission = await prisma.tableMissionSubmission.findFirst({
+      where: {
+        missionId,
+        characterId: input.characterId,
+        status: TableMissionSubmissionStatus.SUBMITTED,
+      },
+      select: { id: true },
+    });
+
+    if (existingOpenSubmission) {
+      throw new AppError(409, "Ja existe uma resposta aguardando revisao para esta missao.", "MISSION_SUBMISSION_ALREADY_PENDING");
+    }
 
     return prisma.tableMissionSubmission.create({
       data: {
@@ -1458,6 +1908,120 @@ export class TableService {
     };
   }
 
+  /**
+   * User is the global account. TableMember is that user's active seat/role inside
+   * one table; it is not the same thing as the player's campaign Character.
+   */
+  static async ensureActiveTableMember(tableId: string, userId: string) {
+    return this.ensureMembership(userId, tableId);
+  }
+
+  /**
+   * Table MASTER is a table-scoped TableMember role. A global ADMIN account role
+   * does not grant master permissions inside a campaign table.
+   */
+  static async ensureTableMaster(tableId: string, userId: string) {
+    return this.ensureMaster(userId, tableId);
+  }
+
+  /**
+   * Returns the authenticated user's table-scoped membership role/status for UI
+   * decisions without treating TableMember as a playable Character.
+   */
+  static async getTableRoleContext(tableId: string, userId: string) {
+    const membership = await this.ensureActiveTableMember(tableId, userId);
+    return {
+      role: membership.role,
+      status: membership.status,
+      isMaster:
+        membership.role === TableMemberRole.MASTER &&
+        membership.status === TableMemberStatus.ACTIVE,
+    };
+  }
+
+  /**
+   * Character is the player's campaign persona inside a table; this validates
+   * table scope only and does not prove the authenticated user owns it.
+   */
+  static async ensureCharacterBelongsToTable(characterId: string, tableId: string) {
+    const character = await prisma.character.findFirst({
+      where: {
+        id: characterId,
+        tableId,
+      },
+      select: {
+        id: true,
+        userId: true,
+        tableId: true,
+      },
+    });
+
+    if (!character) {
+      throw new AppError(404, "Personagem da mesa nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
+    }
+
+    return character;
+  }
+
+  /**
+   * Validates Character ownership by User. This is intentionally separate from
+   * TableMember checks because membership and playable character are distinct.
+   */
+  static async ensureCharacterBelongsToUser(characterId: string, userId: string) {
+    const character = await prisma.character.findFirst({
+      where: {
+        id: characterId,
+        userId,
+      },
+      select: {
+        id: true,
+        userId: true,
+        tableId: true,
+      },
+    });
+
+    if (!character) {
+      throw new AppError(403, "Acesso negado ao personagem.", "CHARACTER_FORBIDDEN");
+    }
+
+    return character;
+  }
+
+  /**
+   * Mission submissions use Character identity. The character must belong to
+   * the requested table, belong to the authenticated User, and be approved.
+   */
+  static async ensureApprovedTableCharacter(
+    characterId: string,
+    tableId: string,
+    userId: string
+  ) {
+    const character = await prisma.character.findFirst({
+      where: {
+        id: characterId,
+        tableId,
+        userId,
+        reviews: {
+          some: {
+            tableId,
+            status: CharacterReviewStatus.APPROVED,
+          },
+        },
+      },
+      select: { id: true, userId: true, tableId: true },
+    });
+
+    if (!character) {
+      throw new AppError(
+        403,
+        "Você precisa criar e aprovar um personagem antes de enviar missões.",
+        "APPROVED_TABLE_CHARACTER_REQUIRED"
+      );
+    }
+
+    return character;
+  }
+
   private static async ensureMembership(userId: string, tableId: string) {
     const table = await prisma.table.findUnique({
       where: { id: tableId },
@@ -1549,53 +2113,7 @@ export class TableService {
   }
 
   private static async ensureTableCharacter(tableId: string, characterId: string) {
-    const character = await prisma.character.findFirst({
-      where: {
-        id: characterId,
-        tableId,
-      },
-      select: {
-        id: true,
-        userId: true,
-      },
-    });
-
-    if (!character) {
-      throw new AppError(404, "Personagem da mesa nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
-    }
-
-    return character;
-  }
-
-  private static async ensureApprovedTableCharacter(
-    userId: string,
-    tableId: string,
-    characterId: string
-  ) {
-    const character = await prisma.character.findFirst({
-      where: {
-        id: characterId,
-        tableId,
-        userId,
-        reviews: {
-          some: {
-            tableId,
-            status: CharacterReviewStatus.APPROVED,
-          },
-        },
-      },
-      select: { id: true },
-    });
-
-    if (!character) {
-      throw new AppError(
-        403,
-        "Envio exige personagem aprovado nesta mesa.",
-        "APPROVED_TABLE_CHARACTER_REQUIRED"
-      );
-    }
-
-    return character;
+    return this.ensureCharacterBelongsToTable(characterId, tableId);
   }
 
   private static async getMissionForTable(tableId: string, missionId: string) {
@@ -1706,6 +2224,7 @@ export class TableService {
         content: true,
         masterNote: true,
         createdAt: true,
+        updatedAt: true,
         mission: {
           select: {
             id: true,
@@ -1738,6 +2257,7 @@ export class TableService {
         content: submission.content,
         masterNote: submission.masterNote,
         createdAt: submission.createdAt,
+        updatedAt: submission.updatedAt,
         mission: submission.mission,
         character: submission.character,
         user: {
@@ -1828,6 +2348,128 @@ export class TableService {
     return true;
   }
 
+  private static jsonText(value: Prisma.JsonValue | null | undefined): string {
+    if (value === null || value === undefined) {
+      return "";
+    }
+
+    if (typeof value === "string") {
+      return value;
+    }
+
+    if (typeof value === "object" && !Array.isArray(value)) {
+      const text = (value as Record<string, unknown>).text;
+      if (typeof text === "string") {
+        return text;
+      }
+    }
+
+    return JSON.stringify(value);
+  }
+
+  // TableWorld JSON can be stored as either { text } or structured objects; this
+  // DTO keeps player/master clients on stable text-friendly fields.
+  private static formatWorld(
+    world:
+      | {
+          id?: string;
+          campaignTitle: string;
+          summary: string;
+          tone: string | null;
+          rules: Prisma.JsonValue | null;
+          characterCreationCriteria: Prisma.JsonValue | null;
+          createdAt?: Date;
+          updatedAt?: Date;
+        }
+      | null
+  ) {
+    if (!world) {
+      return null;
+    }
+
+    return {
+      id: world.id,
+      title: world.campaignTitle,
+      campaignTitle: world.campaignTitle,
+      summary: world.summary,
+      tone: world.tone,
+      rules: world.rules,
+      characterCreationCriteria: world.characterCreationCriteria,
+      rulesText: this.jsonText(world.rules),
+      characterCreationCriteriaText: this.jsonText(world.characterCreationCriteria),
+      createdAt: world.createdAt,
+      updatedAt: world.updatedAt,
+    };
+  }
+
+  private static buildPlayerNextAction(input: {
+    hasCharacter: boolean;
+    reviewStatus: CharacterReviewStatus | null;
+    hasActiveMissionWithoutSubmission: boolean;
+    hasPendingReviewSubmission: boolean;
+    hasTimeline: boolean;
+  }) {
+    if (!input.hasCharacter) {
+      return {
+        key: "CREATE_CHARACTER",
+        title: "Criar personagem",
+        description: "Crie um personagem para participar da mesa.",
+        ctaLabel: "Criar personagem",
+      };
+    }
+
+    if (input.reviewStatus === CharacterReviewStatus.PENDING) {
+      return {
+        key: "WAIT_APPROVAL",
+        title: "Aguardar aprovacao",
+        description: "Seu personagem esta aguardando revisao do mestre.",
+        ctaLabel: "Ver personagem",
+      };
+    }
+
+    if (
+      input.reviewStatus === CharacterReviewStatus.REJECTED ||
+      input.reviewStatus === CharacterReviewStatus.NEEDS_CHANGES
+    ) {
+      return {
+        key: "UPDATE_CHARACTER",
+        title: "Ajustar personagem",
+        description: "Revise o feedback do mestre antes de continuar.",
+        ctaLabel: "Editar personagem",
+      };
+    }
+
+    if (
+      input.reviewStatus === CharacterReviewStatus.APPROVED &&
+      input.hasActiveMissionWithoutSubmission
+    ) {
+      return {
+        key: "START_MISSION",
+        title: "Responder missao",
+        description: "Ha missoes ativas aguardando sua resposta.",
+        ctaLabel: "Ver missoes",
+      };
+    }
+
+    if (input.hasPendingReviewSubmission) {
+      return {
+        key: "WAIT_REVIEW",
+        title: "Aguardar revisao",
+        description: "Sua resposta foi enviada e aguarda feedback do mestre.",
+        ctaLabel: "Ver envios",
+      };
+    }
+
+    return {
+      key: input.hasTimeline ? "READ_TIMELINE" : "CONTINUE_CAMPAIGN",
+      title: input.hasTimeline ? "Ler timeline" : "Continuar campanha",
+      description: input.hasTimeline
+        ? "Confira os acontecimentos recentes da campanha."
+        : "Acompanhe a mesa enquanto novas cenas sao criadas.",
+      ctaLabel: input.hasTimeline ? "Abrir timeline" : "Ver mesa",
+    };
+  }
+
   private static formatTable(
     table: Prisma.TableGetPayload<{
       include: typeof tableInclude;
@@ -1877,7 +2519,7 @@ export class TableService {
         joinedAt: member.joinedAt,
         user: member.user,
       })),
-      world: table.world,
+      world: this.formatWorld(table.world),
     };
   }
 }

@@ -107,6 +107,17 @@ enum CharacterTraitType {
   NEUTRAL
 }
 
+enum CharacterTraitSuggestionSource {
+  AI
+  MASTER
+}
+
+enum CharacterTraitSuggestionStatus {
+  SUGGESTED
+  APPLIED
+  DISMISSED
+}
+
 enum TableMissionStatus {
   ACTIVE
   COMPLETED
@@ -145,6 +156,7 @@ model User {
   createdTableMissions    TableMission[]           @relation("TableMissionCreator")
   tableMissionSubmissions TableMissionSubmission[]
   tableTimelineEvents     TableTimelineEvent[]     @relation("TableTimelineEventCreator")
+  createdTraitSuggestions CharacterTraitSuggestion[] @relation("CharacterTraitSuggestionCreator")
 }
 
 model Character {
@@ -191,6 +203,7 @@ model Character {
   pvpLossesAsLoser        PvpMatch[]                @relation("PvpMatchLoser")
   reviews                 CharacterReview[]
   traits                  CharacterTrait[]
+  traitSuggestions        CharacterTraitSuggestion[]
   tableMissionSubmissions TableMissionSubmission[]
   timelineEvents          TableTimelineEvent[]
 
@@ -574,6 +587,7 @@ model Table {
   characters       Character[]
   characterReviews CharacterReview[]
   characterTraits  CharacterTrait[]
+  traitSuggestions CharacterTraitSuggestion[]
   missions         TableMission[]
   timelineEvents   TableTimelineEvent[]
 
@@ -642,6 +656,29 @@ model CharacterTrait {
   createdBy User      @relation("CharacterTraitCreator", fields: [createdById], references: [id])
 
   @@index([tableId, characterId, createdAt])
+  @@index([createdById])
+}
+
+model CharacterTraitSuggestion {
+  id          String                         @id @default(uuid())
+  tableId     String
+  characterId String
+  type        CharacterTraitType
+  name        String
+  description String?
+  category    String?
+  value       String?
+  source      CharacterTraitSuggestionSource @default(MASTER)
+  status      CharacterTraitSuggestionStatus @default(SUGGESTED)
+  createdById String
+  createdAt   DateTime                       @default(now())
+  updatedAt   DateTime                       @updatedAt
+
+  table     Table     @relation(fields: [tableId], references: [id])
+  character Character @relation(fields: [characterId], references: [id])
+  createdBy User      @relation("CharacterTraitSuggestionCreator", fields: [createdById], references: [id])
+
+  @@index([tableId, characterId, status, createdAt])
   @@index([createdById])
 }
 

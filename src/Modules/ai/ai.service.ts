@@ -76,7 +76,8 @@ export class AiService {
     tableId: string,
     input: TraitSuggestionsInput
   ): Promise<TraitSuggestions> {
-    await TableService.ensureMaster(userId, tableId);
+    await TableService.ensureTableMaster(tableId, userId);
+    await TableService.ensureCharacterBelongsToTable(input.characterId, tableId);
 
     const character = await prisma.character.findFirst({
       where: {

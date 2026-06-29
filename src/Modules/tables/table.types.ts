@@ -1,5 +1,6 @@
 import {
   CharacterReviewStatus,
+  CharacterTraitSuggestionSource,
   CharacterTraitType,
   Prisma,
   TableMissionStatus,
@@ -35,6 +36,15 @@ export interface CreateCharacterTraitInput {
   type: CharacterTraitType;
   name: string;
   description?: string;
+}
+
+export interface CreateCharacterTraitSuggestionInput {
+  type: CharacterTraitType;
+  name: string;
+  description?: string;
+  category?: string;
+  value?: string;
+  source?: CharacterTraitSuggestionSource;
 }
 
 export interface CreateTableMissionInput {

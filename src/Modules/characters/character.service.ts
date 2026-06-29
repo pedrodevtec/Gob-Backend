@@ -598,6 +598,10 @@ export class CharacterService {
         where: { characterId },
       });
 
+      await tx.characterTraitSuggestion.deleteMany({
+        where: { characterId },
+      });
+
       await tx.tableMissionSubmission.deleteMany({
         where: { characterId },
       });
