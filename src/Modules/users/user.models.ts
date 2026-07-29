@@ -3,9 +3,14 @@ import { AppError } from "../../errors/AppError";
 import { IUser, UpdateProfileInput } from "./user.types";
 
 export default class UserModel {
-  static async createUser(nome: string, email: string, senhaHash: string): Promise<IUser> {
+  static async createUser(
+    nome: string,
+    email: string,
+    senhaHash: string,
+    emailVerifiedAt: Date | null = null
+  ): Promise<IUser> {
     return prisma.user.create({
-      data: { nome, email, senha: senhaHash },
+      data: { nome, email, senha: senhaHash, emailVerifiedAt },
     });
   }
 
@@ -20,6 +25,7 @@ export default class UserModel {
         id: true,
         nome: true,
         email: true,
+        emailVerifiedAt: true,
         accountRole: true,
         theme: true,
       },
@@ -40,6 +46,7 @@ export default class UserModel {
         id: true,
         nome: true,
         email: true,
+        emailVerifiedAt: true,
         accountRole: true,
         theme: true,
       },

@@ -141,13 +141,48 @@ enum TableTimelineEventType {
   SESSION_SUMMARY
 }
 
+enum ContextLayer {
+  SETTING
+  EPISODE
+  PLAYTEST_VALIDATION
+}
+
+enum ContextClassification {
+  OFFICIAL_CANON
+  PUBLIC_CANON
+  SECRET_CANON
+  TABLE_CANON
+  PRODUCT_DECISION
+  RULE
+  HYPOTHESIS
+  PENDING_DECISION
+  OUT_OF_MVP
+}
+
+enum ContextVisibility {
+  PUBLIC
+  SPECTATOR
+  AUTHENTICATED_TABLE_PLAYER
+  SPECIFIC_CHARACTER
+  TABLE_MASTER
+  AUTHOR_ADMIN
+}
+
+enum ContextVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 model User {
   id                      String                   @id @default(uuid())
   nome                    String
   email                   String                   @unique
   senha                   String
+  emailVerifiedAt         DateTime?
   accountRole             AccountRole              @default(USER)
   theme                   String?
+  emailVerificationTokens EmailVerificationToken[]
   characters              Character[]              @relation("UserToCharacter")
   paymentOrders           PaymentOrder[]
   masteredTables          Table[]                  @relation("TableMaster")
@@ -157,6 +192,114 @@ model User {
   tableMissionSubmissions TableMissionSubmission[]
   tableTimelineEvents     TableTimelineEvent[]     @relation("TableTimelineEventCreator")
   createdTraitSuggestions CharacterTraitSuggestion[] @relation("CharacterTraitSuggestionCreator")
+  createdSettings         Setting[]                  @relation("SettingCreator")
+  updatedSettings         Setting[]                  @relation("SettingUpdater")
+  createdEpisodes         Episode[]                  @relation("EpisodeCreator")
+  updatedEpisodes         Episode[]                  @relation("EpisodeUpdater")
+  createdContextVersions  ContextVersion[]           @relation("ContextVersionCreator")
+  updatedContextVersions  ContextVersion[]           @relation("ContextVersionUpdater")
+  approvedContextVersions ContextVersion[]           @relation("ContextVersionApprover")
+  createdContextUnits     ContextUnit[]              @relation("ContextUnitCreator")
+  updatedContextUnits     ContextUnit[]              @relation("ContextUnitUpdater")
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, expiresAt])
+}
+
+model Setting {
+  id          String   @id @default(uuid())
+  stableKey   String   @unique
+  title       String
+  description String?
+  createdById String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy       User             @relation("SettingCreator", fields: [createdById], references: [id])
+  updatedBy       User?            @relation("SettingUpdater", fields: [updatedById], references: [id])
+  episodes        Episode[]
+  contextVersions ContextVersion[]
+
+  @@index([createdAt])
+}
+
+model Episode {
+  id          String   @id @default(uuid())
+  settingId   String
+  stableKey   String
+  title       String
+  synopsis    String?
+  createdById String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  setting         Setting          @relation(fields: [settingId], references: [id], onDelete: Restrict)
+  createdBy       User             @relation("EpisodeCreator", fields: [createdById], references: [id])
+  updatedBy       User?            @relation("EpisodeUpdater", fields: [updatedById], references: [id])
+  contextVersions ContextVersion[]
+
+  @@unique([settingId, stableKey])
+  @@index([settingId, createdAt])
+}
+
+model ContextVersion {
+  id           String               @id @default(uuid())
+  settingId    String
+  episodeId    String?
+  layer        ContextLayer
+  version      Int
+  status       ContextVersionStatus @default(DRAFT)
+  origin       String
+  approvalNote String
+  createdById  String
+  updatedById  String?
+  approvedById String?
+  publishedAt  DateTime?
+  archivedAt   DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  setting    Setting       @relation(fields: [settingId], references: [id], onDelete: Restrict)
+  episode    Episode?      @relation(fields: [episodeId], references: [id], onDelete: Restrict)
+  createdBy  User          @relation("ContextVersionCreator", fields: [createdById], references: [id])
+  updatedBy  User?         @relation("ContextVersionUpdater", fields: [updatedById], references: [id])
+  approvedBy User?         @relation("ContextVersionApprover", fields: [approvedById], references: [id])
+  units      ContextUnit[]
+
+  @@unique([settingId, episodeId, layer, version])
+  @@index([settingId, episodeId, layer, status, version])
+}
+
+model ContextUnit {
+  id               String                @id @default(uuid())
+  contextVersionId String
+  classification   ContextClassification
+  visibility       ContextVisibility
+  title            String
+  content          String
+  sortOrder        Int                   @default(0)
+  createdById      String
+  updatedById      String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  contextVersion ContextVersion @relation(fields: [contextVersionId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation("ContextUnitCreator", fields: [createdById], references: [id])
+  updatedBy      User?          @relation("ContextUnitUpdater", fields: [updatedById], references: [id])
+
+  @@index([contextVersionId, visibility, classification])
 }
 
 model Character {

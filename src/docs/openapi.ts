@@ -112,6 +112,7 @@ export const openApiDocument = {
           id: { type: "string" },
           nome: { type: "string" },
           email: { type: "string", format: "email" },
+          emailVerifiedAt: { type: "string", format: "date-time", nullable: true },
           accountRole: { type: "string", enum: ["USER", "ADMIN"] },
           theme: { type: "string", nullable: true },
         },
@@ -637,6 +638,8 @@ export const openApiDocument = {
           message: { type: "string" },
           token: { type: "string" },
           user: { $ref: "#/components/schemas/UserPublic" },
+          emailVerificationRequired: { type: "boolean" },
+          emailDelivery: { type: "string", enum: ["SENT", "FAILED"] },
         },
       },
       RegisterRequest: {
@@ -654,6 +657,20 @@ export const openApiDocument = {
         properties: {
           email: { type: "string", format: "email" },
           senha: { type: "string" },
+        },
+      },
+      ConfirmEmailRequest: {
+        type: "object",
+        required: ["token"],
+        properties: {
+          token: { type: "string" },
+        },
+      },
+      ResendEmailVerificationRequest: {
+        type: "object",
+        required: ["email"],
+        properties: {
+          email: { type: "string", format: "email" },
         },
       },
       UpdateProfileRequest: {
@@ -1475,7 +1492,23 @@ export const openApiDocument = {
         tags: ["Auth"],
         summary: "Autenticar usuario",
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } } },
-        responses: { "200": { description: "Login realizado" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" } },
+        responses: { "200": { description: "Login realizado" }, "400": { $ref: "#/components/responses/BadRequest" }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } },
+      },
+    },
+    "/api/v1/auth/email-verification/confirm": {
+      post: {
+        tags: ["Auth"],
+        summary: "Confirmar e-mail",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ConfirmEmailRequest" } } } },
+        responses: { "200": { description: "E-mail confirmado" }, "400": { $ref: "#/components/responses/BadRequest" }, "409": { $ref: "#/components/responses/Conflict" } },
+      },
+    },
+    "/api/v1/auth/email-verification/resend": {
+      post: {
+        tags: ["Auth"],
+        summary: "Reenviar confirmacao de e-mail",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ResendEmailVerificationRequest" } } } },
+        responses: { "200": { description: "Solicitacao processada" }, "400": { $ref: "#/components/responses/BadRequest" }, "429": { description: "Cooldown ou rate limit excedido" } },
       },
     },
     "/api/v1/auth/me": { get: { tags: ["Auth"], summary: "Obter usuario autenticado", security: authSecurity, responses: { "200": { description: "Usuario autenticado" }, "401": { $ref: "#/components/responses/Unauthorized" } } } },

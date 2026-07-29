@@ -3,6 +3,7 @@ export interface IUser {
   nome: string;
   email: string;
   senha: string;
+  emailVerifiedAt?: Date | null;
   accountRole: "USER" | "ADMIN";
   theme?: string | null;
 }

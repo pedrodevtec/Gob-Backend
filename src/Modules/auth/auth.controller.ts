@@ -15,6 +15,16 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, 200, result, "Login realizado com sucesso.");
 });
 
+export const confirmEmail = asyncHandler(async (req: Request, res: Response) => {
+  const result = await AuthService.confirmEmail(req.body);
+  sendSuccess(res, 200, result);
+});
+
+export const resendEmailVerification = asyncHandler(async (req: Request, res: Response) => {
+  const result = await AuthService.resendEmailVerification(req.body);
+  sendSuccess(res, 200, { message: result.message });
+});
+
 export const me = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const user = await UserModel.findPublicById(userId);

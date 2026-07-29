@@ -3,7 +3,13 @@ import jwt from "jsonwebtoken";
 import { env } from "../../config/env";
 import { AppError } from "../../errors/AppError";
 import UserModel from "../users/user.models";
-import { LoginInput, RegisterInput } from "./auth.types";
+import { EmailVerificationService } from "./emailVerification.service";
+import {
+  ConfirmEmailInput,
+  LoginInput,
+  RegisterInput,
+  ResendEmailVerificationInput,
+} from "./auth.types";
 
 export class AuthService {
   static async register(input: RegisterInput) {
@@ -14,16 +20,29 @@ export class AuthService {
 
     const senhaHash = await bcrypt.hash(input.senha, 10);
     const user = await UserModel.createUser(input.nome, input.email, senhaHash);
+    let emailDelivery: "SENT" | "FAILED" = "SENT";
+
+    try {
+      await EmailVerificationService.createAndSend(user);
+    } catch (error) {
+      emailDelivery = "FAILED";
+      console.error("Failed to send email verification", {
+        userId: user.id,
+        error: "send_failed",
+      });
+    }
 
     return {
-      token: this.signToken(user.id, user.accountRole),
       user: {
         id: user.id,
         nome: user.nome,
         email: user.email,
         accountRole: user.accountRole,
+        emailVerifiedAt: user.emailVerifiedAt ?? null,
         theme: user.theme ?? null,
       },
+      emailVerificationRequired: true,
+      emailDelivery,
     };
   }
 
@@ -38,6 +57,10 @@ export class AuthService {
       throw new AppError(401, "Credenciais invalidas.", "INVALID_CREDENTIALS");
     }
 
+    if (!user.emailVerifiedAt) {
+      throw new AppError(403, "Confirme seu e-mail antes de entrar.", "EMAIL_NOT_VERIFIED");
+    }
+
     return {
       token: this.signToken(user.id, user.accountRole),
       user: {
@@ -45,9 +68,18 @@ export class AuthService {
         nome: user.nome,
         email: user.email,
         accountRole: user.accountRole,
+        emailVerifiedAt: user.emailVerifiedAt,
         theme: user.theme ?? null,
       },
     };
+  }
+
+  static async confirmEmail(input: ConfirmEmailInput) {
+    return EmailVerificationService.confirm(input.token);
+  }
+
+  static async resendEmailVerification(input: ResendEmailVerificationInput) {
+    return EmailVerificationService.resend(input.email);
   }
 
   private static signToken(userId: string, accountRole: "USER" | "ADMIN"): string {
