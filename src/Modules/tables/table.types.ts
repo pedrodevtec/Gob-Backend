@@ -11,6 +11,60 @@ import { CreateCharacterInput } from "../characters/character.types";
 
 export interface CreateTableInput {
   name: string;
+  description?: string;
+  settingId: string;
+  episodeId: string;
+  contextVersionId: string;
+}
+
+export interface UpdateTableInput {
+  name?: string;
+  description?: string;
+  status?: "DRAFT" | "RECRUITING" | "PREPARED";
+}
+
+export interface CreateTableInvitationInput {
+  email: string;
+  role: "PLAYER";
+  expiresInHours?: number;
+}
+
+export interface AcceptTableInvitationInput {
+  token: string;
+}
+
+export interface CharacterSheetInput {
+  name?: string;
+  concept?: string;
+  origin?: string;
+  appearance?: string;
+  desire?: string;
+  fear?: string;
+  promiseOrGuilt?: string;
+  reasonToActWithGroup?: string;
+  markLocation?: string;
+  markAppearance?: string;
+  markReaction?: string;
+  markAttitude?: string;
+  archetypeKey?: string;
+  attributes?: unknown;
+  trainings?: unknown;
+  positiveTrait?: unknown;
+  negativeTrait?: unknown;
+  narrativeBond?: string;
+  personalHistory?: string;
+  initialEquipment?: unknown;
+}
+
+export interface CharacterEpisodeAnswerInput {
+  questionKey: string;
+  promptSnapshot?: string;
+  answer: string;
+}
+
+export interface ReviewCharacterInput {
+  reason?: string;
+  expectedRevision?: number;
 }
 
 export interface JoinTableInput {

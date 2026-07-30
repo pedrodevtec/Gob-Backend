@@ -4,6 +4,7 @@ import {
   CharacterTraitSuggestionSource,
   CharacterTraitType,
   Prisma,
+  TableStatus,
   TableMissionStatus,
   TableMissionSubmissionStatus,
   TableTimelineEventType,
@@ -11,13 +12,19 @@ import {
 import { AppError } from "../../errors/AppError";
 import {
   getBody,
+  requireEmail,
   optionalString,
+  requirePositiveInt,
   requireObject,
   requireString,
 } from "../../utils/validation";
 import {
   CreateTableInput,
+  AcceptTableInvitationInput,
+  CharacterEpisodeAnswerInput,
+  CharacterSheetInput,
   CreateCharacterTraitSuggestionInput,
+  CreateTableInvitationInput,
   CursorPaginationQuery,
   JoinTableInput,
   ListCharacterTraitsQuery,
@@ -25,7 +32,9 @@ import {
   ListTableMissionsQuery,
   ListTableSubmissionsQuery,
   ListTableTimelineQuery,
+  ReviewCharacterInput,
   UpsertTableWorldInput,
+  UpdateTableInput,
 } from "./table.types";
 
 const SUBMISSION_STATUSES: TableMissionSubmissionStatus[] = [
@@ -149,9 +158,184 @@ export const validateCreateTable = (req: Request): void => {
   const body = getBody(req);
   const parsed: CreateTableInput = {
     name: requireString(body.name, "name", 2, 80),
+    description: optionalString(body.description, "description", 1, 2000),
+    settingId: requireString(body.settingId, "settingId", 2, 120),
+    episodeId: requireString(body.episodeId, "episodeId", 2, 120),
+    contextVersionId: requireString(body.contextVersionId, "contextVersionId", 2, 120),
   };
 
   req.body = parsed;
+};
+
+export const validateUpdateTable = (req: Request): void => {
+  const body = getBody(req);
+  const status =
+    body.status === undefined
+      ? undefined
+      : (requireString(body.status, "status", 5, 20).toUpperCase() as TableStatus);
+
+  if (status && !["DRAFT", "RECRUITING", "PREPARED"].includes(status)) {
+    throw new AppError(400, "Status de mesa invalido para o Pacote 02.", "INVALID_TABLE_STATUS");
+  }
+
+  const parsed: UpdateTableInput = {
+    name: optionalString(body.name, "name", 2, 80),
+    description: optionalString(body.description, "description", 1, 2000),
+    status: status as UpdateTableInput["status"],
+  };
+
+  if (Object.values(parsed).every((value) => value === undefined)) {
+    throw new AppError(400, "Nenhum campo valido enviado para atualizar mesa.", "VALIDATION_ERROR");
+  }
+
+  req.body = parsed;
+};
+
+export const validateCreateTableInvitation = (req: Request): void => {
+  const body = getBody(req);
+  const role =
+    body.role === undefined ? "PLAYER" : requireString(body.role, "role", 6, 6).toUpperCase();
+
+  if (role !== "PLAYER") {
+    throw new AppError(400, "Pacote 02 permite convite apenas para PLAYER.", "INVALID_TABLE_INVITATION_ROLE");
+  }
+
+  const parsed: CreateTableInvitationInput = {
+    email: requireEmail(body.email, "email"),
+    role: "PLAYER",
+    expiresInHours:
+      body.expiresInHours === undefined
+        ? undefined
+        : requirePositiveInt(body.expiresInHours, "expiresInHours", { min: 1, max: 720 }),
+  };
+
+  req.body = parsed;
+};
+
+export const validateAcceptTableInvitation = (req: Request): void => {
+  const body = getBody(req);
+  const parsed: AcceptTableInvitationInput = {
+    token: requireString(body.token, "token", 20, 200),
+  };
+
+  req.body = parsed;
+};
+
+export const validateCreatePackage03Character = (req: Request): void => {
+  req.body = parseCharacterSheetInput(getBody(req));
+};
+
+export const validateUpdatePackage03Character = (req: Request): void => {
+  const parsed = parseCharacterSheetInput(getBody(req));
+  if (Object.values(parsed).every((value) => value === undefined)) {
+    throw new AppError(400, "Nenhum campo valido enviado para atualizar personagem.", "VALIDATION_ERROR");
+  }
+
+  req.body = parsed;
+};
+
+export const validateUpsertCharacterEpisodeAnswers = (req: Request): void => {
+  const body = getBody(req);
+  if (!Array.isArray(body.answers) || body.answers.length < 1 || body.answers.length > 20) {
+    throw new AppError(400, "answers deve conter entre 1 e 20 respostas.", "VALIDATION_ERROR");
+  }
+
+  const seen = new Set<string>();
+  const answers: CharacterEpisodeAnswerInput[] = body.answers.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new AppError(400, `Resposta ${index + 1} invalida.`, "VALIDATION_ERROR");
+    }
+
+    const value = entry as Record<string, unknown>;
+    const questionKey = requireStableKey(value.questionKey, "questionKey");
+    if (seen.has(questionKey)) {
+      throw new AppError(409, "Chave de pergunta duplicada no payload.", "DUPLICATE_EPISODE_ANSWER");
+    }
+    seen.add(questionKey);
+
+    return {
+      questionKey,
+      promptSnapshot: optionalString(value.promptSnapshot, "promptSnapshot", 1, 1000),
+      answer: requireString(value.answer, "answer", 1, 8000),
+    };
+  });
+
+  req.body = { answers };
+};
+
+export const validateReviewPackage03Character = (req: Request): void => {
+  const body = getBody(req);
+  const parsed: ReviewCharacterInput = {
+    reason: optionalString(body.reason ?? body.comment, "reason", 1, 2000),
+    expectedRevision:
+      body.expectedRevision === undefined
+        ? undefined
+        : requirePositiveInt(body.expectedRevision, "expectedRevision", { min: 1, max: 10000 }),
+  };
+
+  req.body = parsed;
+};
+
+const parseCharacterSheetInput = (body: Record<string, unknown>): CharacterSheetInput => {
+  assertForbiddenCharacterClientFields(body);
+  return {
+    name: optionalString(body.name ?? body.nome, "name", 1, 80),
+    concept: optionalString(body.concept, "concept", 1, 2000),
+    origin: optionalString(body.origin, "origin", 1, 2000),
+    appearance: optionalString(body.appearance, "appearance", 1, 2000),
+    desire: optionalString(body.desire, "desire", 1, 2000),
+    fear: optionalString(body.fear, "fear", 1, 2000),
+    promiseOrGuilt: optionalString(body.promiseOrGuilt, "promiseOrGuilt", 1, 2000),
+    reasonToActWithGroup: optionalString(body.reasonToActWithGroup, "reasonToActWithGroup", 1, 2000),
+    markLocation: optionalString(body.markLocation, "markLocation", 1, 500),
+    markAppearance: optionalString(body.markAppearance, "markAppearance", 1, 1000),
+    markReaction: optionalString(body.markReaction, "markReaction", 1, 1000),
+    markAttitude: optionalString(body.markAttitude, "markAttitude", 1, 1000),
+    archetypeKey:
+      body.archetypeKey === undefined ? undefined : requireStableKey(body.archetypeKey, "archetypeKey"),
+    attributes: body.attributes,
+    trainings: body.trainings,
+    positiveTrait: body.positiveTrait,
+    negativeTrait: body.negativeTrait,
+    narrativeBond: optionalString(body.narrativeBond, "narrativeBond", 1, 2000),
+    personalHistory: optionalString(body.personalHistory, "personalHistory", 1, 8000),
+    initialEquipment: body.initialEquipment,
+  };
+};
+
+const requireStableKey = (value: unknown, fieldName: string): string => {
+  const parsed = requireString(value, fieldName, 2, 80).toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(parsed)) {
+    throw new AppError(400, `Campo ${fieldName} deve ser identificador estavel.`, "VALIDATION_ERROR");
+  }
+
+  return parsed;
+};
+
+const assertForbiddenCharacterClientFields = (body: Record<string, unknown>): void => {
+  const forbidden = [
+    "id",
+    "userId",
+    "ownerUserId",
+    "tableId",
+    "sheetStatus",
+    "sheetRevision",
+    "submittedRevision",
+    "submittedAt",
+    "approvedAt",
+    "approvedById",
+    "approvedBy",
+    "reviewerUserId",
+    "derived",
+    "derivedValues",
+    "derivedStats",
+  ];
+
+  for (const key of forbidden) {
+    if (body[key] !== undefined) {
+      throw new AppError(400, `Campo ${key} nao pode ser enviado pelo cliente.`, "FORBIDDEN_CHARACTER_FIELD");
+    }
+  }
 };
 
 export const validateJoinTable = (req: Request): void => {

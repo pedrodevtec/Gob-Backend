@@ -80,7 +80,11 @@ export class TableService {
           const table = await tx.table.create({
             data: {
               masterId: userId,
+              settingId: input.settingId,
+              episodeId: input.episodeId,
+              contextVersionId: input.contextVersionId,
               name: input.name,
+              description: input.description ?? "",
               joinCode,
               maxPlayers: MAX_TABLE_PLAYERS,
               members: {
@@ -968,7 +972,7 @@ export class TableService {
       throw new AppError(404, "Mesa nao encontrada para este codigo.", "TABLE_NOT_FOUND");
     }
 
-    if (table.status !== TableStatus.ACTIVE) {
+    if (table.status !== TableStatus.RECRUITING) {
       throw new AppError(409, "Esta mesa nao esta aceitando novos jogadores.", "TABLE_NOT_ACTIVE");
     }
 
@@ -986,7 +990,7 @@ export class TableService {
         throw new AppError(404, "Mesa nao encontrada.", "TABLE_NOT_FOUND");
       }
 
-      if (lockedTable.status !== TableStatus.ACTIVE) {
+      if (lockedTable.status !== TableStatus.RECRUITING) {
         throw new AppError(409, "Esta mesa nao esta aceitando novos jogadores.", "TABLE_NOT_ACTIVE");
       }
 

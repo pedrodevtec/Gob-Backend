@@ -1,20 +1,24 @@
 import { Router } from "express";
 import auth from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
-import { validateCreateCharacter } from "../characters/character.schema";
 import aiRoutes from "../ai/ai.routes";
 import {
+  approveTableCharacter,
   applyCharacterTraitSuggestion,
   createCharacterTrait,
   createCharacterTraitSuggestion,
   createMissionSubmission,
   createTableCharacter,
+  createTableInvitation,
   createTableMission,
   createTable,
   createTimelineEvent,
   deleteCharacterTrait,
   dismissCharacterTraitSuggestion,
   getMyTableCharacter,
+  getTableCharacter,
+  getTableMasterContext,
+  getTablePlayerContext,
   getTable,
   getTablesDashboard,
   getMasterOverview,
@@ -22,6 +26,10 @@ import {
   getTableMission,
   getTableWorld,
   joinTable,
+  listTableInvitations,
+  listTableMembers,
+  listTableCharacterReviewEvents,
+  listTableCharacterReviews,
   listCharacterTraits,
   listCharacterTraitSuggestions,
   listMissionSubmissions,
@@ -31,12 +39,20 @@ import {
   listTableMissions,
   listTables,
   listTimelineEvents,
+  requestTableCharacterChanges,
   reviewMissionSubmission,
   reviewTableCharacter,
+  revokeTableInvitation,
+  submitTableCharacter,
+  updateTableCharacter,
   updateTableMission,
+  updateTable,
+  upsertTableCharacterEpisodeAnswers,
   upsertTableWorld,
 } from "./table.controller";
 import {
+  validateCreateTableInvitation,
+  validateCreatePackage03Character,
   validateCreateCharacterTrait,
   validateCreateCharacterTraitSuggestion,
   validateCreateMissionSubmission,
@@ -44,6 +60,7 @@ import {
   validateCreateTableMission,
   validateCreateTimelineEvent,
   validateJoinTable,
+  validateUpdateTable,
   validateListCharacterTraits,
   validateListTableCharacters,
   validateListTableMissions,
@@ -51,7 +68,10 @@ import {
   validateReviewTableCharacter,
   validateListTableSubmissions,
   validateListTableTimeline,
+  validateReviewPackage03Character,
+  validateUpdatePackage03Character,
   validateUpdateTableMission,
+  validateUpsertCharacterEpisodeAnswers,
   validateUpsertTableWorld,
 } from "./table.schema";
 
@@ -63,16 +83,47 @@ router.use(auth);
 router.post("/", validate(validateCreateTable), createTable);
 router.get("/", listTables);
 router.get("/dashboard", getTablesDashboard);
-router.get("/:id", getTable);
 router.post("/join", validate(validateJoinTable), joinTable);
+router.patch("/:tableId", validate(validateUpdateTable), updateTable);
+router.get("/:tableId/members", listTableMembers);
+router.post("/:tableId/invitations", validate(validateCreateTableInvitation), createTableInvitation);
+router.get("/:tableId/invitations", listTableInvitations);
+router.post("/:tableId/invitations/:invitationId/revoke", revokeTableInvitation);
+router.get("/:tableId/context/player", getTablePlayerContext);
+router.get("/:tableId/context/master", getTableMasterContext);
+router.get("/:id", getTable);
 router.get("/:tableId/master/overview", getMasterOverview);
 router.get("/:tableId/player/overview", getPlayerOverview);
-router.post("/:tableId/characters", validate(validateCreateCharacter), createTableCharacter);
+router.post("/:tableId/characters", validate(validateCreatePackage03Character), createTableCharacter);
 router.get("/:tableId/characters/me", getMyTableCharacter);
+router.get("/:tableId/character-reviews", listTableCharacterReviews);
 router.get(
   "/:tableId/characters",
   validate(validateListTableCharacters),
   listTableCharacters
+);
+router.get("/:tableId/characters/:characterId", getTableCharacter);
+router.patch(
+  "/:tableId/characters/:characterId",
+  validate(validateUpdatePackage03Character),
+  updateTableCharacter
+);
+router.patch(
+  "/:tableId/characters/:characterId/episode-answers",
+  validate(validateUpsertCharacterEpisodeAnswers),
+  upsertTableCharacterEpisodeAnswers
+);
+router.post("/:tableId/characters/:characterId/submit", submitTableCharacter);
+router.get("/:tableId/characters/:characterId/reviews", listTableCharacterReviewEvents);
+router.post(
+  "/:tableId/characters/:characterId/request-changes",
+  validate(validateReviewPackage03Character),
+  requestTableCharacterChanges
+);
+router.post(
+  "/:tableId/characters/:characterId/approve",
+  validate(validateReviewPackage03Character),
+  approveTableCharacter
 );
 router.patch(
   "/:tableId/characters/:characterId/review",

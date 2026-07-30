@@ -60,6 +60,18 @@ enum CharacterStatus {
   DEFEATED
 }
 
+enum CharacterSheetStatus {
+  DRAFT
+  SUBMITTED
+  CHANGES_REQUESTED
+  APPROVED
+}
+
+enum CharacterReviewAction {
+  CHANGES_REQUESTED
+  APPROVED
+}
+
 enum TradeStatus {
   PENDING
   ACCEPTED
@@ -85,13 +97,22 @@ enum TableMemberRole {
 
 enum TableMemberStatus {
   ACTIVE
-  INVITED
   REMOVED
 }
 
 enum TableStatus {
-  ACTIVE
-  ARCHIVED
+  DRAFT
+  RECRUITING
+  PREPARED
+  IN_SESSION
+  CLOSED
+}
+
+enum TableInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
 }
 
 enum CharacterReviewStatus {
@@ -201,6 +222,10 @@ model User {
   approvedContextVersions ContextVersion[]           @relation("ContextVersionApprover")
   createdContextUnits     ContextUnit[]              @relation("ContextUnitCreator")
   updatedContextUnits     ContextUnit[]              @relation("ContextUnitUpdater")
+  sentTableInvitations    TableInvitation[]          @relation("TableInvitationInviter")
+  acceptedTableInvitations TableInvitation[]         @relation("TableInvitationAccepter")
+  approvedCharacters      Character[]                @relation("CharacterSheetApprover")
+  characterReviewEvents   CharacterReviewEvent[]     @relation("CharacterReviewEventReviewer")
 }
 
 model EmailVerificationToken {
@@ -230,6 +255,7 @@ model Setting {
   updatedBy       User?            @relation("SettingUpdater", fields: [updatedById], references: [id])
   episodes        Episode[]
   contextVersions ContextVersion[]
+  tables          Table[]
 
   @@index([createdAt])
 }
@@ -249,6 +275,7 @@ model Episode {
   createdBy       User             @relation("EpisodeCreator", fields: [createdById], references: [id])
   updatedBy       User?            @relation("EpisodeUpdater", fields: [updatedById], references: [id])
   contextVersions ContextVersion[]
+  tables          Table[]
 
   @@unique([settingId, stableKey])
   @@index([settingId, createdAt])
@@ -277,6 +304,7 @@ model ContextVersion {
   updatedBy  User?         @relation("ContextVersionUpdater", fields: [updatedById], references: [id])
   approvedBy User?         @relation("ContextVersionApprover", fields: [approvedById], references: [id])
   units      ContextUnit[]
+  tables     Table[]
 
   @@unique([settingId, episodeId, layer, version])
   @@index([settingId, episodeId, layer, status, version])
@@ -306,6 +334,31 @@ model Character {
   id              String          @id @default(uuid())
   userId          String
   name            String
+  concept         String?
+  origin          String?
+  appearance      String?
+  desire          String?
+  fear            String?
+  promiseOrGuilt  String?
+  reasonToActWithGroup String?
+  markLocation    String?
+  markAppearance  String?
+  markReaction    String?
+  markAttitude    String?
+  archetypeKey    String?
+  attributes      Json?
+  trainings       Json?
+  positiveTrait   Json?
+  negativeTrait   Json?
+  narrativeBond   String?
+  personalHistory String?
+  initialEquipment Json?
+  sheetStatus     CharacterSheetStatus @default(DRAFT)
+  sheetRevision   Int                  @default(1)
+  submittedRevision Int?
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  approvedById    String?
   level           Int             @default(1)
   xp              Int             @default(0)
   pvpRating       Int             @default(1000)
@@ -327,8 +380,10 @@ model Character {
   inventoryId     String?         @unique
   classId         String
   createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   user                    User                      @relation("UserToCharacter", fields: [userId], references: [id])
+  approvedBy              User?                     @relation("CharacterSheetApprover", fields: [approvedById], references: [id])
   table                   Table?                    @relation(fields: [tableId], references: [id])
   inventory               Inventory?                @relation(fields: [inventoryId], references: [id])
   class                   Class                     @relation("ClassToCharacter", fields: [classId], references: [id])
@@ -345,12 +400,16 @@ model Character {
   pvpWinsAsWinner         PvpMatch[]                @relation("PvpMatchWinner")
   pvpLossesAsLoser        PvpMatch[]                @relation("PvpMatchLoser")
   reviews                 CharacterReview[]
+  episodeAnswers          CharacterEpisodeAnswer[]
+  reviewEvents            CharacterReviewEvent[]
   traits                  CharacterTrait[]
   traitSuggestions        CharacterTraitSuggestion[]
   tableMissionSubmissions TableMissionSubmission[]
   timelineEvents          TableTimelineEvent[]
 
   @@index([tableId, createdAt])
+  @@index([tableId, userId, sheetStatus, createdAt])
+  @@index([approvedById])
 }
 
 model Inventory {
@@ -714,18 +773,25 @@ model PvpMatch {
 }
 
 model Table {
-  id          String      @id @default(uuid())
-  masterId    String
-  name        String
-  description String      @default("")
-  joinCode    String      @unique
-  maxPlayers  Int         @default(8)
-  status      TableStatus @default(ACTIVE)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id               String      @id @default(uuid())
+  masterId         String
+  settingId        String
+  episodeId        String
+  contextVersionId String
+  name             String
+  description      String      @default("")
+  joinCode         String      @unique
+  maxPlayers       Int         @default(8)
+  status           TableStatus @default(RECRUITING)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   master           User                 @relation("TableMaster", fields: [masterId], references: [id])
+  setting          Setting              @relation(fields: [settingId], references: [id], onDelete: Restrict)
+  episode          Episode              @relation(fields: [episodeId], references: [id], onDelete: Restrict)
+  contextVersion   ContextVersion       @relation(fields: [contextVersionId], references: [id], onDelete: Restrict)
   members          TableMember[]
+  invitations      TableInvitation[]
   world            TableWorld?
   characters       Character[]
   characterReviews CharacterReview[]
@@ -735,6 +801,8 @@ model Table {
   timelineEvents   TableTimelineEvent[]
 
   @@index([masterId, createdAt])
+  @@index([settingId, episodeId, status, createdAt])
+  @@index([contextVersionId])
 }
 
 model TableMember {
@@ -744,6 +812,8 @@ model TableMember {
   role     TableMemberRole   @default(PLAYER)
   status   TableMemberStatus @default(ACTIVE)
   joinedAt DateTime          @default(now())
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   table Table @relation(fields: [tableId], references: [id])
   user  User  @relation(fields: [userId], references: [id])
@@ -751,6 +821,30 @@ model TableMember {
   @@unique([tableId, userId])
   @@index([userId, status, joinedAt])
   @@index([tableId, status, role])
+}
+
+model TableInvitation {
+  id           String                @id @default(uuid())
+  tableId      String
+  invitedEmail String
+  intendedRole TableMemberRole
+  tokenHash    String                @unique
+  expiresAt    DateTime
+  status       TableInvitationStatus @default(PENDING)
+  invitedById  String
+  acceptedById String?
+  acceptedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime              @default(now())
+
+  table      Table @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  invitedBy  User  @relation("TableInvitationInviter", fields: [invitedById], references: [id])
+  acceptedBy User? @relation("TableInvitationAccepter", fields: [acceptedById], references: [id])
+
+  @@index([tableId, status, createdAt])
+  @@index([invitedEmail, status, expiresAt])
+  @@index([invitedById, createdAt])
+  @@index([acceptedById, acceptedAt])
 }
 
 model TableWorld {
@@ -782,6 +876,37 @@ model CharacterReview {
   @@unique([tableId, characterId])
   @@index([tableId, status, createdAt])
   @@index([characterId])
+}
+
+model CharacterEpisodeAnswer {
+  id             String   @id @default(uuid())
+  characterId    String
+  questionKey    String
+  promptSnapshot String?
+  answer         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, questionKey])
+  @@index([characterId, createdAt])
+}
+
+model CharacterReviewEvent {
+  id                        String                @id @default(uuid())
+  characterId               String
+  reviewerUserId            String
+  action                    CharacterReviewAction
+  reason                    String?
+  characterRevisionReviewed Int
+  createdAt                 DateTime              @default(now())
+
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  reviewer  User      @relation("CharacterReviewEventReviewer", fields: [reviewerUserId], references: [id])
+
+  @@index([characterId, createdAt])
+  @@index([reviewerUserId, createdAt])
 }
 
 model CharacterTrait {

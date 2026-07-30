@@ -10,16 +10,18 @@ import {
   getListTableTimelineQuery,
 } from "./table.schema";
 import { TableService } from "./table.service";
+import { TablePackage02Service } from "./tablePackage02.service";
+import { TableCharacterPackage03Service } from "./tableCharacterPackage03.service";
 
 export const createTable = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
-  const table = await TableService.createTableWithTimeline(userId, req.body);
+  const table = await TablePackage02Service.createTable(userId, req.body);
   sendSuccess(res, 201, { table }, "Mesa criada com sucesso.");
 });
 
 export const listTables = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
-  const tables = await TableService.listTables(userId);
+  const tables = await TablePackage02Service.listTables(userId);
   sendSuccess(res, 200, { tables });
 });
 
@@ -32,8 +34,64 @@ export const getTablesDashboard = asyncHandler(async (req: Request, res: Respons
 export const getTable = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.id, "id");
-  const table = await TableService.getTable(userId, tableId);
+  const table = await TablePackage02Service.getTable(userId, tableId);
   sendSuccess(res, 200, { table });
+});
+
+export const updateTable = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const table = await TablePackage02Service.updateTable(userId, tableId, req.body);
+  sendSuccess(res, 200, { table }, "Mesa atualizada com sucesso.");
+});
+
+export const listTableMembers = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const members = await TablePackage02Service.listMembers(userId, tableId);
+  sendSuccess(res, 200, { members });
+});
+
+export const createTableInvitation = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const result = await TablePackage02Service.createInvitation(userId, tableId, req.body);
+  sendSuccess(res, 201, result, "Convite criado com sucesso.");
+});
+
+export const listTableInvitations = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const invitations = await TablePackage02Service.listPendingInvitations(userId, tableId);
+  sendSuccess(res, 200, { invitations });
+});
+
+export const revokeTableInvitation = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const invitationId = requireString(req.params.invitationId, "invitationId");
+  const invitation = await TablePackage02Service.revokeInvitation(userId, tableId, invitationId);
+  sendSuccess(res, 200, { invitation }, "Convite revogado com sucesso.");
+});
+
+export const acceptTableInvitation = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const result = await TablePackage02Service.acceptInvitation(userId, req.body);
+  sendSuccess(res, 200, result, "Convite aceito com sucesso.");
+});
+
+export const getTablePlayerContext = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const context = await TablePackage02Service.getPlayerContext(userId, tableId);
+  sendSuccess(res, 200, { context });
+});
+
+export const getTableMasterContext = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const context = await TablePackage02Service.getMasterContext(userId, tableId);
+  sendSuccess(res, 200, { context });
 });
 
 export const getMasterOverview = asyncHandler(async (req: Request, res: Response) => {
@@ -73,15 +131,83 @@ export const upsertTableWorld = asyncHandler(async (req: Request, res: Response)
 export const createTableCharacter = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
-  const result = await TableService.createCharacter(userId, tableId, req.body);
-  sendSuccess(res, 201, result, "Personagem enviado para revisao da mesa.");
+  const character = await TableCharacterPackage03Service.createDraft(userId, tableId, req.body);
+  sendSuccess(res, 201, { character }, "Rascunho de personagem criado com sucesso.");
 });
 
 export const getMyTableCharacter = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
-  const character = await TableService.getMyCharacter(userId, tableId);
+  const character = await TableCharacterPackage03Service.getMyCharacter(userId, tableId);
   sendSuccess(res, 200, { character });
+});
+
+export const getTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const character = await TableCharacterPackage03Service.getCharacter(userId, tableId, characterId);
+  sendSuccess(res, 200, { character });
+});
+
+export const updateTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const character = await TableCharacterPackage03Service.updateDraft(userId, tableId, characterId, req.body);
+  sendSuccess(res, 200, { character }, "Rascunho de personagem atualizado com sucesso.");
+});
+
+export const upsertTableCharacterEpisodeAnswers = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const character = await TableCharacterPackage03Service.upsertEpisodeAnswers(
+    userId,
+    tableId,
+    characterId,
+    req.body.answers
+  );
+  sendSuccess(res, 200, { character }, "Respostas de episodio salvas com sucesso.");
+});
+
+export const submitTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const character = await TableCharacterPackage03Service.submit(userId, tableId, characterId);
+  sendSuccess(res, 200, { character }, "Personagem submetido para revisao.");
+});
+
+export const listTableCharacterReviews = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characters = await TableCharacterPackage03Service.listReviewQueue(userId, tableId);
+  sendSuccess(res, 200, { characters });
+});
+
+export const listTableCharacterReviewEvents = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const reviews = await TableCharacterPackage03Service.listReviewEvents(userId, tableId, characterId);
+  sendSuccess(res, 200, { reviews });
+});
+
+export const requestTableCharacterChanges = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const character = await TableCharacterPackage03Service.requestChanges(userId, tableId, characterId, req.body);
+  sendSuccess(res, 200, { character }, "Alteracoes solicitadas.");
+});
+
+export const approveTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const character = await TableCharacterPackage03Service.approve(userId, tableId, characterId, req.body);
+  sendSuccess(res, 200, { character }, "Personagem aprovado.");
 });
 
 export const listTableCharacters = asyncHandler(async (req: Request, res: Response) => {
