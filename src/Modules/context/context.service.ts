@@ -14,7 +14,8 @@ import {
   CreateSettingInput,
 } from "./context.types";
 
-const PUBLIC_VISIBILITIES: ContextVisibility[] = [
+const ANONYMOUS_PUBLIC_VISIBILITIES: ContextVisibility[] = [ContextVisibility.PUBLIC];
+const PUBLIC_CANON_VISIBILITIES: ContextVisibility[] = [
   ContextVisibility.PUBLIC,
   ContextVisibility.SPECTATOR,
   ContextVisibility.AUTHENTICATED_TABLE_PLAYER,
@@ -115,7 +116,7 @@ export class ContextService {
     const hasPublic = version.units.some(
       (unit) =>
         unit.classification === ContextClassification.PUBLIC_CANON &&
-        PUBLIC_VISIBILITIES.includes(unit.visibility)
+        PUBLIC_CANON_VISIBILITIES.includes(unit.visibility)
     );
     const hasSecret = version.units.some(
       (unit) =>
@@ -181,7 +182,7 @@ export class ContextService {
       include: {
         units: {
           where: {
-            visibility: { in: PUBLIC_VISIBILITIES },
+            visibility: { in: ANONYMOUS_PUBLIC_VISIBILITIES },
             classification: { not: ContextClassification.SECRET_CANON },
           },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -204,7 +205,7 @@ export class ContextService {
       include: {
         units: {
           where: {
-            visibility: { in: PUBLIC_VISIBILITIES },
+            visibility: { in: ANONYMOUS_PUBLIC_VISIBILITIES },
             classification: { not: ContextClassification.SECRET_CANON },
           },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -224,7 +225,7 @@ export class ContextService {
     const unit = await this.db.contextUnit.findFirst({
       where: {
         id: unitId,
-        visibility: { in: PUBLIC_VISIBILITIES },
+        visibility: { in: ANONYMOUS_PUBLIC_VISIBILITIES },
         classification: { not: ContextClassification.SECRET_CANON },
         contextVersion: { status: ContextVersionStatus.PUBLISHED },
       },
@@ -316,10 +317,10 @@ export class ContextService {
     classification: ContextClassification,
     visibility: ContextVisibility
   ): void {
-    if (classification === ContextClassification.SECRET_CANON && PUBLIC_VISIBILITIES.includes(visibility)) {
+    if (classification === ContextClassification.SECRET_CANON && PUBLIC_CANON_VISIBILITIES.includes(visibility)) {
       throw new AppError(400, "Visibilidade invalida para contexto secreto.", "INVALID_CONTEXT_VISIBILITY");
     }
-    if (classification === ContextClassification.PUBLIC_CANON && !PUBLIC_VISIBILITIES.includes(visibility)) {
+    if (classification === ContextClassification.PUBLIC_CANON && !PUBLIC_CANON_VISIBILITIES.includes(visibility)) {
       throw new AppError(400, "Visibilidade invalida para contexto publico.", "INVALID_CONTEXT_VISIBILITY");
     }
   }

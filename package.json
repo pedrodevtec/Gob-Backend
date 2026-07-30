@@ -28,6 +28,7 @@
     "test:middleware": "node --require ts-node/register src/middleware/__tests__/middleware.runner.ts",
     "test:auth": "node --require ts-node/register src/Modules/auth/__tests__/auth.runner.ts",
     "test:context": "node --require ts-node/register src/Modules/context/__tests__/context.runner.ts",
+    "test:context:integration": "node --require ts-node/register src/Modules/context/__tests__/context.integration.runner.ts",
     "test": "npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:middleware && npm run test:auth && npm run test:context",
     "start": "node dist/server.js"
   },

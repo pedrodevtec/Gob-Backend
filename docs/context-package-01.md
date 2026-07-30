@@ -66,6 +66,21 @@ Visibilidade descreve quem pode acessar:
 
 As duas dimensoes nao sao equivalentes. Um item pode ser canonico e ainda assim secreto. Um item pode ser hipotese e ter visibilidade restrita.
 
+## Matriz explicita de visibilidade
+
+| Visibilidade | Rota anonima atual | Implementado agora | Dependencia futura |
+|---|---:|---:|---|
+| `PUBLIC` | Sim | Sim | Nenhuma |
+| `SPECTATOR` | Nao | Persistencia e enum apenas | Definir se espectador e anonimo ou autenticado |
+| `AUTHENTICATED_TABLE_PLAYER` | Nao | Persistencia e enum apenas | Tables, memberships e autorizacao por mesa |
+| `SPECIFIC_CHARACTER` | Nao | Persistencia e enum apenas | Character lifecycle + ownership/mesa |
+| `TABLE_MASTER` | Nao | Persistencia e enum apenas | Tables, memberships e papel `MASTER` por mesa |
+| `AUTHOR_ADMIN` | Nao | Sim, via rotas administrativas `ADMIN` | Modelo editorial futuro, se necessario |
+
+As rotas publicas anonimas deste pacote retornam somente unidades com `visibility = PUBLIC`.
+
+`SPECTATOR` nao foi tratado como anonimo porque a arquitetura atual ainda nao define se espectador e visitante publico ou identidade autenticada. Ate essa decisao existir, `SPECTATOR` permanece fora da recuperacao anonima.
+
 ## Restricao temporaria de autorizacao
 
 O backend ja separa `AccountRole.ADMIN` global de `TableMemberRole.MASTER` por mesa.
@@ -74,19 +89,21 @@ Como este pacote nao implementa o proximo pacote de Tables, members, invitations
 
 Um `MASTER` de mesa nao recebe automaticamente acesso a todo contexto secreto global. A liberacao segura por mesa depende do proximo pacote.
 
+`ADMIN` e um substituto seguro temporario para Author/Admin. Ele nao substitui autorizacao de Mestre por mesa e nao deve ser usado como prova de que um usuario pode acessar segredo de todas as mesas.
+
 ## Matriz de autorizacao atual
 
-| Acao | Publico | Usuario comum | ADMIN |
-|---|---:|---:|---:|
-| Ler contexto publico publicado ativo | Sim | Sim | Sim |
-| Criar Setting | Nao | Nao | Sim |
-| Criar Episode | Nao | Nao | Sim |
-| Criar versao de contexto | Nao | Nao | Sim |
-| Adicionar unidade publica/secreta | Nao | Nao | Sim |
-| Publicar versao | Nao | Nao | Sim |
-| Arquivar versao | Nao | Nao | Sim |
-| Listar versoes de gestao | Nao | Nao | Sim |
-| Ler unidade secreta | Nao | Nao | Sim, via rota administrativa |
+| Acao | Visitante anonimo | Espectador | Jogador de mesa | Personagem especifico | Mestre da mesa | Author/Admin |
+|---|---:|---:|---:|---:|---:|---:|
+| Ler `PUBLIC` publicado ativo | Sim | Nao implementado | Nao implementado | Nao implementado | Nao implementado | Sim |
+| Ler `SPECTATOR` | Nao | Pendente | Nao | Nao | Nao | Sim |
+| Ler `AUTHENTICATED_TABLE_PLAYER` | Nao | Nao | Pendente | Nao | Nao | Sim |
+| Ler `SPECIFIC_CHARACTER` | Nao | Nao | Nao | Pendente | Nao | Sim |
+| Ler `TABLE_MASTER` | Nao | Nao | Nao | Nao | Pendente | Sim |
+| Ler `AUTHOR_ADMIN` | Nao | Nao | Nao | Nao | Nao | Sim |
+| Criar Setting/Episode/contexto | Nao | Nao | Nao | Nao | Nao | Sim |
+| Publicar ou arquivar versao | Nao | Nao | Nao | Nao | Nao | Sim |
+| Listar versoes de gestao | Nao | Nao | Nao | Nao | Nao | Sim |
 
 ## Contratos da API
 
@@ -127,7 +144,7 @@ Codigos de erro estaveis principais:
 
 ## Protecao contra spoilers
 
-Leituras publicas usam filtro de consulta por `visibility` publica e `classification != SECRET_CANON`.
+Leituras publicas usam filtro de consulta por `visibility = PUBLIC` e `classification != SECRET_CANON`.
 
 Isso evita carregar unidades secretas para depois filtrar em memoria. A resposta publica nao inclui contagem de unidades secretas, identificadores secretos, titulo secreto, origem secreta, aprovador secreto ou metadados de unidades protegidas.
 
@@ -151,7 +168,10 @@ As variaveis abertas ao Mestre permanecem nao selecionadas e nao sao persistidas
 ```bash
 npm run prisma:generate
 npm run test:context
+TEST_DATABASE_URL="postgresql://..." npm run test:context:integration
 npm test
 npx tsc --noEmit
 npx tsc
 ```
+
+A suite `test:context:integration` exige PostgreSQL descartavel dedicado. Ela recusa `DATABASE_URL` compartilhado/produtivo e nao deve ser executada contra Supabase ou banco de desenvolvimento compartilhado.

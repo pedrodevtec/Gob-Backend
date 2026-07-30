@@ -332,6 +332,45 @@ const createPublishedEpisodeFixture = async (baseUrl: string) => {
     },
   });
 
+  const authenticatedPlayerUnitResponse = await requestJson(`${baseUrl}/admin/units`, {
+    method: "POST",
+    headers: adminHeaders(),
+    body: {
+      contextVersionId: version.id,
+      classification: ContextClassification.RULE,
+      visibility: ContextVisibility.AUTHENTICATED_TABLE_PLAYER,
+      title: "Contexto para jogador autenticado de mesa",
+      content: "Conteudo protegido para jogador autenticado de mesa.",
+      sortOrder: 3,
+    },
+  });
+
+  const specificCharacterUnitResponse = await requestJson(`${baseUrl}/admin/units`, {
+    method: "POST",
+    headers: adminHeaders(),
+    body: {
+      contextVersionId: version.id,
+      classification: ContextClassification.HYPOTHESIS,
+      visibility: ContextVisibility.SPECIFIC_CHARACTER,
+      title: "Contexto para personagem especifico",
+      content: "Conteudo protegido para personagem especifico.",
+      sortOrder: 4,
+    },
+  });
+
+  const tableMasterUnitResponse = await requestJson(`${baseUrl}/admin/units`, {
+    method: "POST",
+    headers: adminHeaders(),
+    body: {
+      contextVersionId: version.id,
+      classification: ContextClassification.HYPOTHESIS,
+      visibility: ContextVisibility.TABLE_MASTER,
+      title: "Contexto para Mestre de mesa",
+      content: "Conteudo protegido para Mestre de mesa.",
+      sortOrder: 5,
+    },
+  });
+
   const publishResponse = await requestJson(`${baseUrl}/admin/versions/${version.id}/publish`, {
     method: "POST",
     headers: adminHeaders(),
@@ -343,6 +382,9 @@ const createPublishedEpisodeFixture = async (baseUrl: string) => {
     version,
     publicUnit: publicUnitResponse.body.contextUnit,
     secretUnit: secretUnitResponse.body.contextUnit,
+    authenticatedPlayerUnit: authenticatedPlayerUnitResponse.body.contextUnit,
+    specificCharacterUnit: specificCharacterUnitResponse.body.contextUnit,
+    tableMasterUnit: tableMasterUnitResponse.body.contextUnit,
     publishResponse,
   };
 };
@@ -419,7 +461,15 @@ void (async () => {
       assert.equal(response.body.context.units.length, 1);
       assert.equal(response.body.context.units[0].content, EPISODE_ONE_PUBLIC_CONTENT);
       assertNoSecretLeak(response.body);
+      assert.equal(response.serialized.includes("AUTHENTICATED_TABLE_PLAYER"), false);
+      assert.equal(response.serialized.includes("SPECIFIC_CHARACTER"), false);
+      assert.equal(response.serialized.includes("TABLE_MASTER"), false);
+      assert.equal(response.serialized.includes("AUTHOR_ADMIN"), false);
+      assert.equal(response.serialized.includes(fixture.authenticatedPlayerUnit.id), false);
+      assert.equal(response.serialized.includes(fixture.specificCharacterUnit.id), false);
+      assert.equal(response.serialized.includes(fixture.tableMasterUnit.id), false);
       assert.ok(JSON.stringify(db.calls.lastPublicUnitsWhere).includes("PUBLIC"));
+      assert.equal(JSON.stringify(db.calls.lastPublicUnitsWhere).includes("AUTHENTICATED_TABLE_PLAYER"), false);
     });
 
     await test("jogador comum nao acessa contexto secreto por ID direto", async () => {
@@ -443,7 +493,7 @@ void (async () => {
         headers: adminHeaders(),
       });
       assert.equal(response.status, 200);
-      assert.equal(response.body.contextVersion.units.length, 2);
+      assert.equal(response.body.contextVersion.units.length, 5);
       assert.equal(response.serialized.includes("Erya"), true);
       assert.equal(response.serialized.includes("Zurich"), true);
     });
