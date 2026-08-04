@@ -2,6 +2,7 @@ import { Router } from "express";
 import auth from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
 import aiRoutes from "../ai/ai.routes";
+import playerAiRoutes from "../ai/playerAi.routes";
 import {
   approveTableCharacter,
   applyCharacterTraitSuggestion,
@@ -78,6 +79,7 @@ import {
 const router = Router();
 
 router.use("/:tableId/ai", aiRoutes);
+router.use("/:tableId/player-ai", playerAiRoutes);
 router.use(auth);
 
 router.post("/", validate(validateCreateTable), createTable);

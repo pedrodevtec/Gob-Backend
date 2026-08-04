@@ -68,3 +68,27 @@ export interface TimelineSummarySuggestion {
   suggestedTitle: string;
   suggestedDescription: string;
 }
+
+export interface PlayerCharacterAssistantInput {
+  useCase: "PLAYER_CHARACTER_CREATION" | "PLAYER_CHARACTER_VALIDATION";
+  characterId?: string;
+  instruction?: string;
+}
+
+export interface PlayerCharacterAssistantSuggestion {
+  id?: string;
+  targetField: string;
+  suggestion: string;
+  rationale: string;
+  playerAction: string;
+}
+
+export interface PlayerCharacterAssistantOutput {
+  suggestions: PlayerCharacterAssistantSuggestion[];
+  warnings: string[];
+}
+
+export interface DecidePlayerAiSuggestionInput {
+  decision: "ACCEPTED" | "EDITED" | "DISCARDED";
+  editedSuggestion?: string;
+}

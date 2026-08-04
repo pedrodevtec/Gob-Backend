@@ -18,6 +18,8 @@
   "scripts": {
     "dev": "nodemon src/server.ts",
     "install:build": "npm install && tsc",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:seed": "ts-node prisma/seed.ts",
     "db:reset-game-state": "ts-node scripts/reset-game-state.ts",
@@ -28,11 +30,13 @@
     "test:table-package02:integration": "node --require ts-node/register src/Modules/tables/__tests__/table.package02.integration.runner.ts",
     "test:table-package03:integration": "node --require ts-node/register src/Modules/tables/__tests__/table.package03.integration.runner.ts",
     "test:ai": "node --require ts-node/register src/Modules/ai/__tests__/ai.client.runner.ts",
+    "test:ai-context": "node --require ts-node/register src/Modules/ai/__tests__/ai.context.runner.ts",
     "test:middleware": "node --require ts-node/register src/middleware/__tests__/middleware.runner.ts",
     "test:auth": "node --require ts-node/register src/Modules/auth/__tests__/auth.runner.ts",
     "test:context": "node --require ts-node/register src/Modules/context/__tests__/context.runner.ts",
     "test:context:integration": "node --require ts-node/register src/Modules/context/__tests__/context.integration.runner.ts",
-    "test": "npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:middleware && npm run test:auth && npm run test:context",
+    "test:front1": "npm run test:auth && npm run test:context && npm run test:table-package03 && npm run test:ai-context && npm run test:ai && npm run test:middleware",
+    "test": "npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:middleware && npm run test:auth && npm run test:context",
     "start": "node dist/server.js"
   },
   "prisma": {

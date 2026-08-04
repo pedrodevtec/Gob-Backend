@@ -5,6 +5,8 @@ import prisma from "./config/db";
 import { env } from "./config/env";
 import authRoutes from "./Modules/auth/auth.routes";
 import adminRoutes from "./Modules/admin/admin.routes";
+import builderRoutes from "./Modules/builder/builder.routes";
+import campaignRoutes from "./Modules/campaigns/campaign.routes";
 import characterRoutes from "./Modules/characters/character.routes";
 import contextRoutes from "./Modules/context/context.routes";
 import gameplayRoutes from "./Modules/gameplay/gameplay.routes";
@@ -66,6 +68,8 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/builder", builderRoutes);
+app.use("/api/v1/campaigns", campaignRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/characters", characterRoutes);
 app.use("/api/v1/context", contextRoutes);

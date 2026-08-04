@@ -195,6 +195,25 @@ enum ContextVersionStatus {
   ARCHIVED
 }
 
+enum PublicCampaignStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum ParticipantConsentStatus {
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum PlayerAiSuggestionStatus {
+  GENERATED
+  ACCEPTED
+  EDITED
+  DISCARDED
+}
+
 model User {
   id                      String                   @id @default(uuid())
   nome                    String
@@ -226,6 +245,12 @@ model User {
   acceptedTableInvitations TableInvitation[]         @relation("TableInvitationAccepter")
   approvedCharacters      Character[]                @relation("CharacterSheetApprover")
   characterReviewEvents   CharacterReviewEvent[]     @relation("CharacterReviewEventReviewer")
+  createdPublicCampaigns  PublicCampaign[]           @relation("PublicCampaignCreator")
+  updatedPublicCampaigns  PublicCampaign[]           @relation("PublicCampaignUpdater")
+  participantConsents     ParticipantConsent[]        @relation("ParticipantConsentUser")
+  playerAiSuggestions     PlayerAiSuggestion[]        @relation("PlayerAiSuggestionUser")
+  finalSurveyResponses    FinalSurveyResponse[]       @relation("FinalSurveyResponseUser")
+  analyticsEvents         AnalyticsEvent[]            @relation("AnalyticsEventUser")
 }
 
 model EmailVerificationToken {
@@ -404,6 +429,8 @@ model Character {
   reviewEvents            CharacterReviewEvent[]
   traits                  CharacterTrait[]
   traitSuggestions        CharacterTraitSuggestion[]
+  playerAiSuggestions     PlayerAiSuggestion[]
+  analyticsEvents         AnalyticsEvent[]
   tableMissionSubmissions TableMissionSubmission[]
   timelineEvents          TableTimelineEvent[]
 
@@ -799,10 +826,130 @@ model Table {
   traitSuggestions CharacterTraitSuggestion[]
   missions         TableMission[]
   timelineEvents   TableTimelineEvent[]
+  publicCampaign   PublicCampaign?
+  playerAiSuggestions PlayerAiSuggestion[]
+  finalSurveyResponses FinalSurveyResponse[]
+  analyticsEvents      AnalyticsEvent[]
 
   @@index([masterId, createdAt])
   @@index([settingId, episodeId, status, createdAt])
   @@index([contextVersionId])
+}
+
+model PublicCampaign {
+  id                   String               @id @default(uuid())
+  tableId              String               @unique
+  slug                 String               @unique
+  title                String
+  description          String?
+  status               PublicCampaignStatus @default(DRAFT)
+  builderConfigVersion String               @default("pilot-v1")
+  consentVersion       String               @default("research-pilot-v1")
+  createdById          String
+  updatedById          String?
+  activatedAt          DateTime?
+  closedAt             DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  table     Table                @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  createdBy User                 @relation("PublicCampaignCreator", fields: [createdById], references: [id])
+  updatedBy User?                @relation("PublicCampaignUpdater", fields: [updatedById], references: [id])
+  consents  ParticipantConsent[]
+  finalSurveyResponses FinalSurveyResponse[]
+  analyticsEvents      AnalyticsEvent[]
+
+  @@index([status, createdAt])
+}
+
+model ParticipantConsent {
+  id             String                   @id @default(uuid())
+  userId         String
+  campaignId     String
+  consentVersion String
+  status         ParticipantConsentStatus
+  source         String
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  user     User           @relation("ParticipantConsentUser", fields: [userId], references: [id], onDelete: Cascade)
+  campaign PublicCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, campaignId, consentVersion])
+  @@index([campaignId, status, createdAt])
+  @@index([userId, status, createdAt])
+}
+
+model PlayerAiSuggestion {
+  id                   String                   @id @default(uuid())
+  userId               String
+  tableId              String
+  characterId          String?
+  useCase              String
+  builderConfigVersion String
+  promptVersion        String
+  model                String?
+  suggestion           Json
+  status               PlayerAiSuggestionStatus @default(GENERATED)
+  decisionPayload      Json?
+  decidedAt            DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  user      User       @relation("PlayerAiSuggestionUser", fields: [userId], references: [id], onDelete: Cascade)
+  table     Table      @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([userId, tableId, status, createdAt])
+  @@index([characterId, status, createdAt])
+}
+
+model FinalSurveyResponse {
+  id            String   @id @default(uuid())
+  userId        String
+  campaignId    String
+  tableId       String
+  role          String   @default("PLAYER")
+  surveyVersion String
+  answers       Json
+  submittedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user     User           @relation("FinalSurveyResponseUser", fields: [userId], references: [id], onDelete: Cascade)
+  campaign PublicCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  table    Table          @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, campaignId])
+  @@index([campaignId, submittedAt])
+  @@index([tableId, submittedAt])
+}
+
+model AnalyticsEvent {
+  id              String   @id @default(uuid())
+  eventKey        String
+  occurredAt      DateTime @default(now())
+  userId          String?
+  campaignId      String?
+  tableId         String?
+  characterId     String?
+  sessionId       String?
+  source          String?
+  metadataVersion String   @default("pilot-v1")
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  user      User?           @relation("AnalyticsEventUser", fields: [userId], references: [id], onDelete: SetNull)
+  campaign  PublicCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  table     Table?          @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  character Character?      @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([eventKey, occurredAt])
+  @@index([campaignId, eventKey, occurredAt])
+  @@index([userId, campaignId, occurredAt])
+  @@index([tableId, occurredAt])
 }
 
 model TableMember {

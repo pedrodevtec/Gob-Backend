@@ -37,6 +37,22 @@ authenticated user and table pair to 12 AI requests per minute. This is applied
 in addition to the common authenticated/write API limits. It is defense in
 depth and does not replace the table-specific MASTER check.
 
+Player character assistance uses:
+
+- `POST /api/v1/tables/:tableId/player-ai/character-help`
+- `PATCH /api/v1/tables/:tableId/player-ai/suggestions/:suggestionId/decision`
+
+It requires an active `PLAYER` membership, uses `AiContextService` safe context
+and the official Builder `pilot-v1`, and returns suggestions only. It never
+saves, confirms, canonizes, or edits the character sheet.
+
+The character-help endpoint persists each returned suggestion as
+`PlayerAiSuggestion` with the Builder version, prompt version, model and original
+suggestion snapshot. The decision endpoint accepts only the suggestion owner and
+records `ACCEPTED`, `EDITED` or `DISCARDED`; `EDITED` also stores the edited
+text supplied by the player. No decision endpoint applies changes to the
+character sheet.
+
 ## Data and cost controls
 
 - Calls happen only when the frontend explicitly invokes an endpoint.
@@ -48,3 +64,5 @@ depth and does not replace the table-specific MASTER check.
 - Provider-side response storage is disabled with `store: false`.
 - The frontend must show the draft for manual review before using existing save
   endpoints.
+- Player AI suggestions must be accepted, edited, or discarded by the player in
+  a separate flow.

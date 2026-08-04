@@ -1,0 +1,62 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ci-placeholder.invalid/gob
+      DIRECT_URL: postgresql://ci-placeholder.invalid/gob
+      JWT_SECRET: ci-test-secret
+      CORS_ORIGIN: "*"
+      PERMISSION_DEBUG: "false"
+      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+      TEST_DATABASE_CONFIRMED_DISPOSABLE: ${{ secrets.TEST_DATABASE_CONFIRMED_DISPOSABLE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Front 1 unit tests
+        run: npm run test:front1
+
+      - name: Full non-destructive suite
+        run: npm test
+
+      - name: Context integration tests
+        if: ${{ env.TEST_DATABASE_URL != '' && env.TEST_DATABASE_CONFIRMED_DISPOSABLE == 'true' }}
+        run: npm run test:context:integration
+
+      - name: Table Package 02 integration tests
+        if: ${{ env.TEST_DATABASE_URL != '' && env.TEST_DATABASE_CONFIRMED_DISPOSABLE == 'true' }}
+        run: npm run test:table-package02:integration
+
+      - name: Table Package 03 integration tests
+        if: ${{ env.TEST_DATABASE_URL != '' && env.TEST_DATABASE_CONFIRMED_DISPOSABLE == 'true' }}
+        run: npm run test:table-package03:integration
+
+      - name: Build
+        run: npm run build

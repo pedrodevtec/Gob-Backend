@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/http";
 import { requireString, requireUserId } from "../../utils/validation";
+import { CampaignPilotService } from "../campaigns/campaignPilot.service";
 import {
   getListCharacterTraitsQuery,
   getListTableCharactersQuery,
@@ -132,6 +133,20 @@ export const createTableCharacter = asyncHandler(async (req: Request, res: Respo
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
   const character = await TableCharacterPackage03Service.createDraft(userId, tableId, req.body);
+  await CampaignPilotService.recordAnalyticsEvent({
+    userId,
+    tableId,
+    characterId: character.id,
+    eventKey: "character_builder_started",
+    source: "table_character_flow",
+  });
+  await CampaignPilotService.recordAnalyticsEvent({
+    userId,
+    tableId,
+    characterId: character.id,
+    eventKey: "character_draft_saved",
+    source: "table_character_flow",
+  });
   sendSuccess(res, 201, { character }, "Rascunho de personagem criado com sucesso.");
 });
 
@@ -155,6 +170,13 @@ export const updateTableCharacter = asyncHandler(async (req: Request, res: Respo
   const tableId = requireString(req.params.tableId, "tableId");
   const characterId = requireString(req.params.characterId, "characterId");
   const character = await TableCharacterPackage03Service.updateDraft(userId, tableId, characterId, req.body);
+  await CampaignPilotService.recordAnalyticsEvent({
+    userId,
+    tableId,
+    characterId: character.id,
+    eventKey: "character_draft_saved",
+    source: "table_character_flow",
+  });
   sendSuccess(res, 200, { character }, "Rascunho de personagem atualizado com sucesso.");
 });
 
@@ -168,6 +190,13 @@ export const upsertTableCharacterEpisodeAnswers = asyncHandler(async (req: Reque
     characterId,
     req.body.answers
   );
+  await CampaignPilotService.recordAnalyticsEvent({
+    userId,
+    tableId,
+    characterId: character.id,
+    eventKey: "character_draft_saved",
+    source: "table_character_flow",
+  });
   sendSuccess(res, 200, { character }, "Respostas de episodio salvas com sucesso.");
 });
 
@@ -176,6 +205,13 @@ export const submitTableCharacter = asyncHandler(async (req: Request, res: Respo
   const tableId = requireString(req.params.tableId, "tableId");
   const characterId = requireString(req.params.characterId, "characterId");
   const character = await TableCharacterPackage03Service.submit(userId, tableId, characterId);
+  await CampaignPilotService.recordAnalyticsEvent({
+    userId,
+    tableId,
+    characterId: character.id,
+    eventKey: "character_submitted",
+    source: "table_character_flow",
+  });
   sendSuccess(res, 200, { character }, "Personagem submetido para revisao.");
 });
 

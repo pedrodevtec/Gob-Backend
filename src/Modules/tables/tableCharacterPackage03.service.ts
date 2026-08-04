@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import defaultPrisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
+import { BuilderService } from "../builder/builder.service";
 import { TableAuthorizationService } from "./tableAuthorization.service";
 import {
   CharacterEpisodeAnswerInput,
@@ -109,6 +110,8 @@ export class TableCharacterPackage03Service {
 
     const character = await this.db.$transaction(async (tx) => {
       for (const answer of answers) {
+        const promptSnapshot = BuilderService.buildEpisodeQuestionSnapshot(answer.questionKey);
+
         await tx.characterEpisodeAnswer.upsert({
           where: {
             characterId_questionKey: {
@@ -119,11 +122,11 @@ export class TableCharacterPackage03Service {
           create: {
             characterId,
             questionKey: answer.questionKey,
-            promptSnapshot: answer.promptSnapshot ?? null,
+            promptSnapshot,
             answer: answer.answer,
           },
           update: {
-            promptSnapshot: answer.promptSnapshot ?? null,
+            promptSnapshot,
             answer: answer.answer,
           },
         });
@@ -374,7 +377,10 @@ export class TableCharacterPackage03Service {
       ["narrativeBond", character.narrativeBond],
       ["personalHistory", character.personalHistory],
       ["initialEquipment", character.initialEquipment],
-      ["episodeAnswers", character.episodeAnswers.length ? "ok" : null],
+      ...BuilderService.getRequiredEpisodeQuestionKeys().map((questionKey) => [
+        `episodeAnswers.${questionKey}`,
+        character.episodeAnswers.some((answer) => answer.questionKey === questionKey) ? "ok" : null,
+      ]),
     ].filter((entry) => entry[1] === null || entry[1] === undefined || entry[1] === "");
 
     if (missing.length) {
@@ -401,9 +407,9 @@ export class TableCharacterPackage03Service {
       ...(input.markAppearance !== undefined ? { markAppearance: input.markAppearance } : {}),
       ...(input.markReaction !== undefined ? { markReaction: input.markReaction } : {}),
       ...(input.markAttitude !== undefined ? { markAttitude: input.markAttitude } : {}),
-      ...(input.archetypeKey !== undefined ? { archetypeKey: input.archetypeKey } : {}),
-      ...(input.attributes !== undefined ? { attributes: this.normalizeAttributes(input.attributes) } : {}),
-      ...(input.trainings !== undefined ? { trainings: this.normalizeTrainings(input.trainings) } : {}),
+      ...(input.archetypeKey !== undefined ? { archetypeKey: BuilderService.normalizeArchetypeKey(input.archetypeKey) } : {}),
+      ...(input.attributes !== undefined ? { attributes: BuilderService.normalizeAttributes(input.attributes) } : {}),
+      ...(input.trainings !== undefined ? { trainings: BuilderService.normalizeTrainings(input.trainings) } : {}),
       ...(input.positiveTrait !== undefined ? { positiveTrait: this.normalizeTrait(input.positiveTrait, "positiveTrait") } : {}),
       ...(input.negativeTrait !== undefined ? { negativeTrait: this.normalizeTrait(input.negativeTrait, "negativeTrait") } : {}),
       ...(input.narrativeBond !== undefined ? { narrativeBond: input.narrativeBond } : {}),
@@ -482,6 +488,8 @@ export class TableCharacterPackage03Service {
   }
 
   private static normalizeEquipment(value: unknown): Prisma.InputJsonValue {
+    BuilderService.validateInitialEquipment(value);
+
     if (!Array.isArray(value) || value.length < 1 || value.length > 10) {
       throw new AppError(400, "initialEquipment deve ser lista com 1 a 10 itens.", "INVALID_CHARACTER_EQUIPMENT");
     }
@@ -535,6 +543,7 @@ export class TableCharacterPackage03Service {
       narrativeBond: character.narrativeBond,
       personalHistory: character.personalHistory,
       initialEquipment: character.initialEquipment,
+      derivedResources: BuilderService.calculateDerivedResources(character.attributes),
       sheetStatus: character.sheetStatus,
       sheetRevision: character.sheetRevision,
       submittedRevision: character.submittedRevision,

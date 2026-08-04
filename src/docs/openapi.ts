@@ -54,6 +54,27 @@ const traitIdPathParam = {
   schema: { type: "string" },
 } as const;
 
+const versionPathParam = {
+  name: "version",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
+const slugPathParam = {
+  name: "slug",
+  in: "path",
+  required: true,
+  schema: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", minLength: 3, maxLength: 80 },
+} as const;
+
+const campaignIdPathParam = {
+  name: "campaignId",
+  in: "path",
+  required: true,
+  schema: { type: "string" },
+} as const;
+
 const authSecurity = [{ bearerAuth: [] }] as const;
 
 export const openApiDocument = {
@@ -69,6 +90,8 @@ export const openApiDocument = {
     { name: "Health", description: "Operacao e disponibilidade da API" },
     { name: "Meta", description: "Metadados e versao da API" },
     { name: "Auth", description: "Autenticacao e sessao" },
+    { name: "Builder", description: "Configuracao oficial e versionada do Character Builder" },
+    { name: "Campaigns", description: "Campanha publica, consentimento e entrada por slug" },
     { name: "Users", description: "Perfil do usuario" },
     { name: "Characters", description: "Gestao de personagens e classes" },
     { name: "Inventory", description: "Inventario e equipamentos" },
@@ -115,6 +138,284 @@ export const openApiDocument = {
           emailVerifiedAt: { type: "string", format: "date-time", nullable: true },
           accountRole: { type: "string", enum: ["USER", "ADMIN"] },
           theme: { type: "string", nullable: true },
+        },
+      },
+      CharacterBuilderConfig: {
+        type: "object",
+        required: [
+          "version",
+          "status",
+          "approvedBy",
+          "archetypes",
+          "attributes",
+          "trainings",
+          "traitsAndBond",
+          "equipment",
+          "episodeQuestions",
+          "aiBoundaries",
+        ],
+        properties: {
+          version: { type: "string", enum: ["pilot-v1"] },
+          status: { type: "string", enum: ["APPROVED"] },
+          approvedBy: { type: "string", enum: ["PRODUCT_OWNER"] },
+          scope: { type: "array", items: { type: "string" } },
+          archetypes: {
+            type: "object",
+            properties: {
+              classification: { type: "string", enum: ["RULE"] },
+              selection: {
+                type: "object",
+                properties: { exact: { type: "integer", enum: [1] } },
+              },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    key: { type: "string" },
+                    name: { type: "string" },
+                  },
+                },
+              },
+              sourceNotes: { type: "array", items: { type: "string" } },
+            },
+          },
+          attributes: {
+            type: "object",
+            properties: {
+              classification: { type: "string", enum: ["RULE"] },
+              totalPoints: { type: "integer", enum: [12] },
+              minValue: { type: "integer", enum: [0] },
+              maxInitialWithoutApproval: { type: "integer", enum: [4] },
+              pilotSelectableMax: { type: "integer", enum: [4] },
+              requireAtLeastOneOf: { type: "array", items: { type: "object" } },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    key: { type: "string" },
+                    name: { type: "string" },
+                    min: { type: "integer" },
+                    maxInitialWithoutApproval: { type: "integer" },
+                    pilotSelectableMax: { type: "integer" },
+                  },
+                },
+              },
+              derivedResources: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    key: { type: "string" },
+                    name: { type: "string" },
+                    backendCalculated: { type: "boolean" },
+                    formula: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          trainings: {
+            type: "object",
+            properties: {
+              classification: { type: "string", enum: ["RULE"] },
+              selection: {
+                type: "object",
+                properties: {
+                  exact: { type: "integer", enum: [3] },
+                  distinct: { type: "boolean", enum: [true] },
+                },
+              },
+              bonus: { type: "integer", enum: [2] },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    key: { type: "string" },
+                    name: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          traitsAndBond: {
+            type: "object",
+            properties: {
+              classification: { type: "string", enum: ["RULE_AND_PRODUCT_DECISION"] },
+              required: { type: "object" },
+              suggestedPositiveTraits: { type: "array", items: { type: "object" } },
+              suggestedNegativeTraits: { type: "array", items: { type: "object" } },
+              suggestedBonds: { type: "array", items: { type: "object" } },
+              rules: { type: "array", items: { type: "string" } },
+            },
+          },
+          equipment: {
+            type: "object",
+            properties: {
+              classification: { type: "string", enum: ["RULE_AND_PRODUCT_DECISION"] },
+              minInitialItems: { type: "integer", enum: [1] },
+              slots: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    key: { type: "string" },
+                    name: { type: "string" },
+                  },
+                },
+              },
+              rules: { type: "array", items: { type: "string" } },
+            },
+          },
+          episodeQuestions: {
+            type: "object",
+            properties: {
+              classification: { type: "string", enum: ["PUBLIC_CANON_AND_RULE"] },
+              requiredBeforeSubmission: { type: "boolean", enum: [true] },
+              questions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    questionKey: { type: "string" },
+                    version: { type: "string" },
+                    prompt: { type: "string" },
+                    required: { type: "boolean" },
+                  },
+                },
+              },
+              rules: { type: "array", items: { type: "string" } },
+            },
+          },
+          aiBoundaries: { type: "array", items: { type: "string" } },
+        },
+      },
+      PublicCampaign: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          slug: { type: "string" },
+          title: { type: "string" },
+          description: { type: "string", nullable: true },
+          status: { type: "string", enum: ["DRAFT", "ACTIVE", "CLOSED"] },
+          builderConfigVersion: { type: "string" },
+          consentVersion: { type: "string" },
+          table: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              status: { type: "string" },
+              seats: {
+                type: "object",
+                properties: {
+                  maxPlayers: { type: "integer" },
+                  activeMembers: { type: "integer" },
+                },
+              },
+            },
+          },
+          world: {
+            type: "object",
+            nullable: true,
+            properties: {
+              title: { type: "string" },
+              summary: { type: "string" },
+              tone: { type: "string", nullable: true },
+            },
+          },
+        },
+      },
+      CreatePublicCampaignRequest: {
+        type: "object",
+        required: ["tableId", "title"],
+        properties: {
+          tableId: { type: "string" },
+          title: { type: "string" },
+          description: { type: "string" },
+          slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        },
+      },
+      UpdatePublicCampaignRequest: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          slug: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        },
+      },
+      PublicCampaignStatusRequest: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: { type: "string", enum: ["ACTIVE", "CLOSED"] },
+        },
+      },
+      ParticipantConsentRequest: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: { type: "string", enum: ["ACCEPTED", "DECLINED"] },
+          source: { type: "string" },
+        },
+      },
+      FinalSurveySubmitRequest: {
+        type: "object",
+        required: [
+          "characterUnderstandingScore",
+          "creationExperienceScore",
+          "aiHelpfulnessScore",
+          "aiBoundaryProblem",
+          "storyImpactScore",
+        ],
+        properties: {
+          characterUnderstandingScore: { type: "integer", minimum: 1, maximum: 5 },
+          creationExperienceScore: { type: "integer", minimum: 1, maximum: 5 },
+          aiHelpfulnessScore: {
+            oneOf: [
+              { type: "integer", minimum: 1, maximum: 5 },
+              { type: "string", enum: ["NOT_USED", "Nao usei a IA", "Não usei a IA"] },
+            ],
+          },
+          aiBoundaryProblem: { type: "boolean", description: "true equivale a Sim." },
+          aiBoundaryProblemDetails: { type: "string" },
+          storyImpactScore: { type: "integer", minimum: 1, maximum: 5 },
+          finalComment: { type: "string" },
+        },
+      },
+      CampaignAnalyticsEventRequest: {
+        type: "object",
+        required: ["eventKey"],
+        properties: {
+          eventKey: {
+            type: "string",
+            enum: [
+              "campaign_landing_viewed",
+              "registration_started",
+              "registration_completed",
+              "email_verified",
+              "consent_recorded",
+              "campaign_joined",
+              "public_context_viewed",
+              "character_builder_started",
+              "builder_step_completed",
+              "character_draft_saved",
+              "character_submitted",
+              "final_survey_submitted",
+              "pilot_flow_completed",
+              "ai_suggestion_generated",
+              "ai_suggestion_failed",
+              "ai_suggestion_decided",
+            ],
+          },
+          characterId: { type: "string" },
+          sessionId: { type: "string" },
+          source: { type: "string" },
+          metadata: {
+            type: "object",
+            description: "Metadados tecnicos minimos. Nao enviar ficha, respostas narrativas, prompt integral ou segredos.",
+          },
         },
       },
       Class: {
@@ -1354,6 +1655,32 @@ export const openApiDocument = {
           },
         },
       },
+      PlayerAiCharacterHelpRequest: {
+        type: "object",
+        required: ["useCase"],
+        properties: {
+          useCase: {
+            type: "string",
+            enum: ["PLAYER_CHARACTER_CREATION", "PLAYER_CHARACTER_VALIDATION"],
+          },
+          characterId: { type: "string" },
+          instruction: { type: "string" },
+        },
+      },
+      PlayerAiSuggestionDecisionRequest: {
+        type: "object",
+        required: ["decision"],
+        properties: {
+          decision: {
+            type: "string",
+            enum: ["ACCEPTED", "EDITED", "DISCARDED"],
+          },
+          editedSuggestion: {
+            type: "string",
+            description: "Obrigatorio quando decision for EDITED.",
+          },
+        },
+      },
       TableWorldRequest: {
         type: "object",
         required: ["campaignTitle", "summary"],
@@ -1367,10 +1694,125 @@ export const openApiDocument = {
       },
       TableCharacterRequest: {
         type: "object",
-        required: ["name"],
         properties: {
           name: { type: "string" },
-          classId: { type: "string" },
+          concept: { type: "string" },
+          origin: { type: "string" },
+          appearance: { type: "string" },
+          desire: { type: "string" },
+          fear: { type: "string" },
+          promiseOrGuilt: { type: "string" },
+          reasonToActWithGroup: { type: "string" },
+          markLocation: { type: "string" },
+          markAppearance: { type: "string" },
+          markReaction: { type: "string" },
+          markAttitude: { type: "string" },
+          archetypeKey: {
+            type: "string",
+            enum: [
+              "guardian_blade",
+              "guardian_shield",
+              "guardian_oracle",
+              "guardian_flames",
+              "guardian_hunt",
+              "guardian_souls",
+              "guardian_wanderer",
+            ],
+          },
+          attributes: {
+            type: "object",
+            description:
+              "Deve conter exatamente strength, agility, vigor, intellect, presence e spirit, somando 12 pontos.",
+            additionalProperties: { type: "integer", minimum: 0, maximum: 4 },
+          },
+          trainings: {
+            type: "array",
+            minItems: 3,
+            maxItems: 3,
+            uniqueItems: true,
+            items: {
+              type: "string",
+              enum: [
+                "combat",
+                "defense",
+                "survival",
+                "investigation",
+                "influence",
+                "stealth",
+                "healing",
+                "spirituality",
+                "craft",
+              ],
+            },
+          },
+          positiveTrait: { type: "object", additionalProperties: true },
+          negativeTrait: { type: "object", additionalProperties: true },
+          narrativeBond: { type: "string" },
+          personalHistory: { type: "string" },
+          initialEquipment: {
+            type: "array",
+            minItems: 1,
+            maxItems: 10,
+            items: {
+              oneOf: [
+                { type: "string" },
+                {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    slotKey: {
+                      type: "string",
+                      enum: [
+                        "main_hand",
+                        "off_hand",
+                        "armor",
+                        "boots",
+                        "belt",
+                        "amulet",
+                        "relic",
+                        "quick_consumable",
+                      ],
+                    },
+                  },
+                  additionalProperties: true,
+                },
+              ],
+            },
+          },
+        },
+      },
+      CharacterEpisodeAnswersRequest: {
+        type: "object",
+        required: ["answers"],
+        properties: {
+          answers: {
+            type: "array",
+            minItems: 1,
+            maxItems: 20,
+            items: {
+              type: "object",
+              required: ["questionKey", "answer"],
+              properties: {
+                questionKey: {
+                  type: "string",
+                  enum: [
+                    "relationship_with_erya",
+                    "protection_in_bravantus",
+                    "past_connection_to_mandukuru",
+                    "fear_of_guardian_souls",
+                  ],
+                },
+                answer: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+      Package03CharacterReviewRequest: {
+        type: "object",
+        properties: {
+          reason: { type: "string" },
+          expectedRevision: { type: "integer", minimum: 1 },
         },
       },
       TableCharacterReviewRequest: {
@@ -1476,6 +1918,260 @@ export const openApiDocument = {
               },
             },
           },
+        },
+      },
+    },
+    "/api/v1/builder/configs/active": {
+      get: {
+        tags: ["Builder"],
+        summary: "Obter configuracao ativa do Character Builder",
+        description:
+          "Retorna a configuracao oficial e versionada aprovada para o piloto. A resposta nao exige autenticacao e nao inclui conteudo secreto.",
+        responses: {
+          "200": {
+            description: "Configuracao retornada",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    builderConfig: { $ref: "#/components/schemas/CharacterBuilderConfig" },
+                  },
+                },
+              },
+            },
+          },
+          "500": { description: "Configuracao bloqueada por conter dado protegido" },
+        },
+      },
+    },
+    "/api/v1/builder/configs/{version}": {
+      get: {
+        tags: ["Builder"],
+        summary: "Obter configuracao do Character Builder por versao",
+        description:
+          "Retorna uma versao oficial publicada do Character Builder. Atualmente a versao aprovada e pilot-v1.",
+        parameters: [versionPathParam],
+        responses: {
+          "200": {
+            description: "Configuracao retornada",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    builderConfig: { $ref: "#/components/schemas/CharacterBuilderConfig" },
+                  },
+                },
+              },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "500": { description: "Configuracao bloqueada por conter dado protegido" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/consent": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Obter documento de consentimento do piloto",
+        responses: {
+          "200": { description: "Documento de consentimento retornado" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/final-survey": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Obter configuracao da pesquisa final do jogador",
+        responses: {
+          "200": { description: "Pesquisa final versionada retornada" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/{slug}": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Obter landing publica da campanha por slug",
+        description:
+          "Retorna somente dados publicos de campanha ACTIVE e mesa disponivel. Campanha inexistente ou indisponivel retorna erro generico.",
+        parameters: [slugPathParam],
+        responses: {
+          "200": {
+            description: "Campanha publica retornada",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean" },
+                    campaign: { $ref: "#/components/schemas/PublicCampaign" },
+                  },
+                },
+              },
+            },
+          },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/{slug}/final-survey/me": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Obter minha resposta da pesquisa final",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        responses: {
+          "200": { description: "Resposta existente ou null retornado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+      put: {
+        tags: ["Campaigns"],
+        summary: "Submeter ou corrigir minha pesquisa final",
+        description: "Somente PLAYER ativo da campanha ACTIVE. Permite uma resposta ativa por participante/campanha e atualiza antes do encerramento.",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/FinalSurveySubmitRequest" } } } },
+        responses: {
+          "200": { description: "Pesquisa final registrada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/{slug}/events": {
+      post: {
+        tags: ["Campaigns"],
+        summary: "Registrar evento minimo de analytics do piloto",
+        description: "Registra somente eventKey oficial e metadados tecnicos minimos. Conteudo narrativo, ficha, prompt integral e segredos ficam fora do payload.",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CampaignAnalyticsEventRequest" } } } },
+        responses: {
+          "201": { description: "Evento registrado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/{slug}/consent": {
+      post: {
+        tags: ["Campaigns"],
+        summary: "Registrar consentimento do participante",
+        description:
+          "Registra aceite ou recusa da versao atual do consentimento. Recusa nao cria vinculo com a mesa.",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ParticipantConsentRequest" } } } },
+        responses: {
+          "200": { description: "Consentimento registrado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/{slug}/resume": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Retomar campanha publica pelo jogador",
+        description:
+          "Retorna estado de consentimento, membership e overview do jogador quando ele ja esta vinculado a mesa da campanha.",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        responses: {
+          "200": { description: "Estado de retomada retornado" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/campaigns/public/{slug}/join": {
+      post: {
+        tags: ["Campaigns"],
+        summary: "Entrar na campanha publica por slug",
+        description:
+          "Exige usuario autenticado e consentimento ACCEPTED na versao atual. Vincula o usuario somente a mesa configurada da campanha.",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        responses: {
+          "200": { description: "Entrada realizada" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
+    "/api/v1/campaigns/admin": {
+      post: {
+        tags: ["Campaigns"],
+        summary: "Criar campanha publica para mesa",
+        description: "Somente ADMIN global. Campanha nasce em DRAFT; slug pode ser informado ou gerado.",
+        security: authSecurity,
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CreatePublicCampaignRequest" } } } },
+        responses: {
+          "201": { description: "Campanha criada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
+    "/api/v1/campaigns/admin/{campaignId}": {
+      patch: {
+        tags: ["Campaigns"],
+        summary: "Atualizar campanha publica DRAFT",
+        description: "Slug e dados publicos so podem ser alterados enquanto a campanha estiver DRAFT.",
+        security: authSecurity,
+        parameters: [campaignIdPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/UpdatePublicCampaignRequest" } } } },
+        responses: {
+          "200": { description: "Campanha atualizada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
+    "/api/v1/campaigns/admin/{campaignId}/operations": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Obter painel operacional minimo da campanha",
+        description: "Somente ADMIN global. Retorna agregados do piloto sem respostas narrativas, ficha completa, prompts ou segredos.",
+        security: authSecurity,
+        parameters: [campaignIdPathParam],
+        responses: {
+          "200": { description: "Visao operacional retornada" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
+    "/api/v1/campaigns/admin/{campaignId}/status": {
+      post: {
+        tags: ["Campaigns"],
+        summary: "Ativar ou encerrar campanha publica",
+        description: "Ao ativar, o slug torna-se imutavel. Campanhas CLOSED mantem o slug reservado.",
+        security: authSecurity,
+        parameters: [campaignIdPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PublicCampaignStatusRequest" } } } },
+        responses: {
+          "200": { description: "Status atualizado" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
         },
       },
     },
@@ -1820,13 +2516,44 @@ export const openApiDocument = {
     "/api/v1/tables/{tableId}/ai/timeline-summary": {
       post: { tags: ["Tables AI"], summary: "Sugerir resumo para timeline", description: "Somente MASTER. Retorna titulo e descricao sugeridos sem salvar dados.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/AiTimelineSummaryRequest" } } } }, responses: { "200": { description: "Resumo estruturado retornado" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "503": { description: "AI assistant is not configured." } } },
     },
+    "/api/v1/tables/{tableId}/player-ai/character-help": {
+      post: { tags: ["Tables AI"], summary: "Sugerir assistencia de personagem para jogador", description: "Somente PLAYER ativo da mesa. Usa contexto seguro do jogador e Builder pilot-v1. Persiste snapshot das sugestoes retornadas e nao salva nem altera a ficha.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PlayerAiCharacterHelpRequest" } } } }, responses: { "200": { description: "Sugestoes estruturadas retornadas" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "429": { description: "Rate limit excedido" }, "503": { description: "AI assistant is not configured." } } },
+    },
+    "/api/v1/tables/{tableId}/player-ai/suggestions/{suggestionId}/decision": {
+      patch: { tags: ["Tables AI"], summary: "Registrar decisao sobre sugestao assistiva", description: "Somente PLAYER ativo dono da sugestao. Registra ACCEPTED, EDITED ou DISCARDED sem aplicar mudancas na ficha.", security: authSecurity, parameters: [tableIdPathParam, { name: "suggestionId", in: "path", required: true, schema: { type: "string" } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PlayerAiSuggestionDecisionRequest" } } } }, responses: { "200": { description: "Decisao registrada" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" }, "429": { description: "Rate limit excedido" } } },
+    },
     "/api/v1/tables/{tableId}/world": {
       get: { tags: ["Tables"], summary: "Obter mundo da mesa", description: "Qualquer membro da mesa pode visualizar.", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Mundo retornado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
       put: { tags: ["Tables"], summary: "Criar ou atualizar mundo da mesa", description: "Somente MASTER pode criar ou atualizar.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableWorldRequest" } } } }, responses: { "200": { description: "Mundo salvo" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" } } },
     },
     "/api/v1/tables/{tableId}/characters": {
       get: { tags: ["Tables"], summary: "Listar personagens da mesa", security: authSecurity, parameters: [tableIdPathParam, { name: "reviewStatus", in: "query", required: false, schema: { type: "string", enum: ["PENDING", "APPROVED", "REJECTED", "NEEDS_CHANGES"] } }, { name: "cursor", in: "query", required: false, schema: { type: "string" } }, { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 50, default: 20 } }], responses: { "200": { description: "Pagina de personagens retornada" }, "403": { $ref: "#/components/responses/Forbidden" } } },
-      post: { tags: ["Tables"], summary: "Criar personagem na mesa", description: "Cria personagem vinculado a tableId e review PENDING.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterRequest" } } } }, responses: { "201": { description: "Personagem enviado para revisao" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" } } },
+      post: { tags: ["Tables"], summary: "Criar rascunho de personagem na mesa", description: "Cria personagem proprio do PLAYER ativo em estado DRAFT. Campos podem ser enviados parcialmente, mas quando presentes sao validados contra o Builder pilot-v1.", security: authSecurity, parameters: [tableIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterRequest" } } } }, responses: { "201": { description: "Rascunho criado" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/me": {
+      get: { tags: ["Tables"], summary: "Retomar meu personagem da mesa", description: "Retorna o personagem mais recente do usuario autenticado na mesa, ou null quando ainda nao existe.", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Personagem retornado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/character-reviews": {
+      get: { tags: ["Tables"], summary: "Listar fila de revisao de personagens", description: "Somente MASTER ativo da mesa.", security: authSecurity, parameters: [tableIdPathParam], responses: { "200": { description: "Fila retornada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}": {
+      get: { tags: ["Tables"], summary: "Obter personagem da mesa", description: "Dono le o proprio personagem. MASTER le personagens submetidos ou aprovados.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Personagem retornado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+      patch: { tags: ["Tables"], summary: "Atualizar rascunho de personagem", description: "Somente o PLAYER dono pode editar personagem em DRAFT ou CHANGES_REQUESTED. Campos oficiais sao validados contra Builder pilot-v1.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterRequest" } } } }, responses: { "200": { description: "Rascunho atualizado" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/episode-answers": {
+      patch: { tags: ["Tables"], summary: "Salvar respostas contextuais do Episodio 1", description: "Somente o PLAYER dono pode salvar respostas enquanto o personagem estiver editavel. O backend registra o snapshot da pergunta a partir do Builder pilot-v1.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CharacterEpisodeAnswersRequest" } } } }, responses: { "200": { description: "Respostas salvas" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/submit": {
+      post: { tags: ["Tables"], summary: "Submeter personagem para revisao", description: "Submissao exige ficha completa e todas as quatro respostas oficiais do Episodio 1.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Personagem submetido" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/reviews": {
+      get: { tags: ["Tables"], summary: "Listar eventos de revisao do personagem", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Eventos retornados" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/request-changes": {
+      post: { tags: ["Tables"], summary: "Solicitar ajustes no personagem", description: "Somente MASTER ativo da mesa. Exige motivo.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Package03CharacterReviewRequest" } } } }, responses: { "200": { description: "Ajustes solicitados" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/approve": {
+      post: { tags: ["Tables"], summary: "Aprovar personagem submetido", description: "Somente MASTER ativo da mesa. Usa revisao esperada quando enviada para evitar aprovacao stale.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: false, content: { "application/json": { schema: { $ref: "#/components/schemas/Package03CharacterReviewRequest" } } } }, responses: { "200": { description: "Personagem aprovado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/review": {
       patch: { tags: ["Tables"], summary: "Revisar personagem da mesa", description: "Somente MASTER. Ao aprovar, cria evento automatico CHARACTER_APPROVED na timeline.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterReviewRequest" } } } }, responses: { "200": { description: "Review atualizada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },

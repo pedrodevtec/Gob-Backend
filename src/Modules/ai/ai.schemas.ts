@@ -86,3 +86,33 @@ export const timelineSummaryOutputSchema: JsonSchema = {
   required: ["suggestedTitle", "suggestedDescription"],
   additionalProperties: false,
 };
+
+const playerCharacterSuggestionSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    targetField: conciseString,
+    suggestion: conciseString,
+    rationale: conciseString,
+    playerAction: conciseString,
+  },
+  required: ["targetField", "suggestion", "rationale", "playerAction"],
+  additionalProperties: false,
+};
+
+export const playerCharacterAssistantOutputSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    suggestions: {
+      type: "array",
+      maxItems: 5,
+      items: playerCharacterSuggestionSchema,
+    },
+    warnings: {
+      type: "array",
+      maxItems: 3,
+      items: conciseString,
+    },
+  },
+  required: ["suggestions", "warnings"],
+  additionalProperties: false,
+};
