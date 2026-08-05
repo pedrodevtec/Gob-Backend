@@ -39,8 +39,22 @@ Campanhas nascem em `DRAFT`. O slug so pode ser alterado enquanto a campanha est
 - `ParticipantConsent`
 - `FinalSurveyResponse`
 - `AnalyticsEvent`
+- `Character.creativeDossier`, quando o participante salva o dossie pelo fluxo de personagem.
 
 O texto do consentimento nao e duplicado em cada aceite. O registro referencia `consentVersion`, atualmente `research-pilot-v1`.
+
+## Seed do playtest
+
+O seed garante a campanha publica `pilot-v1` com:
+
+- `title`: `Chamado aos Marcados`;
+- `description`: `Teste fechado de criacao de personagens de Guardian of Bravantus`;
+- `status`: `ACTIVE`;
+- mesa vinculada em `RECRUITING`;
+- mundo minimo configurado;
+- se houver exatamente um usuario no banco, ele e promovido para `ADMIN` e vinculado como `MASTER` da mesa.
+
+Antes do deploy, rode migrations e seed fora do build da Vercel.
 
 ## Fora do escopo
 

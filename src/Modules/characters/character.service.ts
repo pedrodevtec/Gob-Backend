@@ -233,6 +233,7 @@ export class CharacterService {
         userId,
         name: input.name,
         classId: characterClass.id,
+        creativeDossier: input.creativeDossier,
         tableId: options?.tableId,
         inventoryId: inventory.id,
         level: 1,

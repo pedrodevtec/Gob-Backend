@@ -166,6 +166,7 @@ export class CampaignPilotService {
       finalSurveyCount,
       analyticsGroups,
       latestAnalyticsEvents,
+      dossierSubmissions,
     ] = await prisma.$transaction([
       prisma.participantConsent.groupBy({
         by: ["status"],
@@ -216,7 +217,60 @@ export class CampaignPilotService {
           metadataVersion: true,
         },
       }),
+      prisma.character.findMany({
+        where: {
+          tableId: campaign.tableId,
+          creativeDossier: { not: Prisma.JsonNull },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 50,
+        select: {
+          id: true,
+          tableId: true,
+          userId: true,
+          name: true,
+          creativeDossier: true,
+          sheetStatus: true,
+          sheetRevision: true,
+          submittedRevision: true,
+          submittedAt: true,
+          approvedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              nome: true,
+              email: true,
+            },
+          },
+        },
+      }),
     ]);
+
+    const formattedDossierSubmissions = dossierSubmissions.map((character) => ({
+      id: character.id,
+      characterId: character.id,
+      tableId: character.tableId,
+      userId: character.userId,
+      user: {
+        id: character.user.id,
+        name: character.user.nome,
+        email: character.user.email,
+      },
+      character: {
+        id: character.id,
+        name: character.name,
+      },
+      creativeDossier: character.creativeDossier,
+      sheetStatus: character.sheetStatus,
+      sheetRevision: character.sheetRevision,
+      submittedRevision: character.submittedRevision,
+      submittedAt: character.submittedAt,
+      approvedAt: character.approvedAt,
+      createdAt: character.createdAt,
+      updatedAt: character.updatedAt,
+    }));
 
     return {
       campaign: {
@@ -257,6 +311,8 @@ export class CampaignPilotService {
         })),
         latestEvents: latestAnalyticsEvents,
       },
+      dossierSubmissions: formattedDossierSubmissions,
+      characterSubmissions: formattedDossierSubmissions,
     };
   }
 

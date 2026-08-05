@@ -115,6 +115,17 @@ const optionalJsonTextOrObject = (
   return requireObject(value, fieldName) as Prisma.InputJsonObject;
 };
 
+const optionalJsonObject = (
+  value: unknown,
+  fieldName: string
+): Prisma.InputJsonObject | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return requireObject(value, fieldName) as Prisma.InputJsonObject;
+};
+
 const optionalBoolean = (value: unknown, fieldName: string): boolean | undefined => {
   if (value === undefined) {
     return undefined;
@@ -300,6 +311,7 @@ const parseCharacterSheetInput = (body: Record<string, unknown>): CharacterSheet
     narrativeBond: optionalString(body.narrativeBond, "narrativeBond", 1, 2000),
     personalHistory: optionalString(body.personalHistory, "personalHistory", 1, 8000),
     initialEquipment: body.initialEquipment,
+    creativeDossier: optionalJsonObject(body.creativeDossier, "creativeDossier"),
   };
 };
 

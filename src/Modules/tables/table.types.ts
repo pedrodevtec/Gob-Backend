@@ -54,6 +54,7 @@ export interface CharacterSheetInput {
   narrativeBond?: string;
   personalHistory?: string;
   initialEquipment?: unknown;
+  creativeDossier?: Prisma.InputJsonValue;
 }
 
 export interface CharacterEpisodeAnswerInput {

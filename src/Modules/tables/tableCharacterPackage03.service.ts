@@ -415,6 +415,7 @@ export class TableCharacterPackage03Service {
       ...(input.narrativeBond !== undefined ? { narrativeBond: input.narrativeBond } : {}),
       ...(input.personalHistory !== undefined ? { personalHistory: input.personalHistory } : {}),
       ...(input.initialEquipment !== undefined ? { initialEquipment: this.normalizeEquipment(input.initialEquipment) } : {}),
+      ...(input.creativeDossier !== undefined ? { creativeDossier: input.creativeDossier } : {}),
     };
   }
 
@@ -543,6 +544,7 @@ export class TableCharacterPackage03Service {
       narrativeBond: character.narrativeBond,
       personalHistory: character.personalHistory,
       initialEquipment: character.initialEquipment,
+      creativeDossier: character.creativeDossier,
       derivedResources: BuilderService.calculateDerivedResources(character.attributes),
       sheetStatus: character.sheetStatus,
       sheetRevision: character.sheetRevision,

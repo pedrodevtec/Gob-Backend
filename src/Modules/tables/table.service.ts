@@ -503,6 +503,7 @@ export class TableService {
       latestMission,
       submissionGroups,
       latestEvent,
+      dossierSubmissions,
     ] = await prisma.$transaction([
       prisma.table.findUnique({
         where: { id: tableId },
@@ -582,6 +583,35 @@ export class TableService {
           createdAt: true,
         },
       }),
+      prisma.character.findMany({
+        where: {
+          tableId,
+          creativeDossier: { not: Prisma.JsonNull },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 20,
+        select: {
+          id: true,
+          tableId: true,
+          userId: true,
+          name: true,
+          creativeDossier: true,
+          sheetStatus: true,
+          sheetRevision: true,
+          submittedRevision: true,
+          submittedAt: true,
+          approvedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              nome: true,
+              email: true,
+            },
+          },
+        },
+      }),
     ]);
 
     if (!table) {
@@ -653,6 +683,29 @@ export class TableService {
       totalEvents,
       pendingSubmissions,
     });
+    const formattedDossierSubmissions = dossierSubmissions.map((character) => ({
+      id: character.id,
+      characterId: character.id,
+      tableId: character.tableId,
+      userId: character.userId,
+      user: {
+        id: character.user.id,
+        name: character.user.nome,
+        email: character.user.email,
+      },
+      character: {
+        id: character.id,
+        name: character.name,
+      },
+      creativeDossier: character.creativeDossier,
+      sheetStatus: character.sheetStatus,
+      sheetRevision: character.sheetRevision,
+      submittedRevision: character.submittedRevision,
+      submittedAt: character.submittedAt,
+      approvedAt: character.approvedAt,
+      createdAt: character.createdAt,
+      updatedAt: character.updatedAt,
+    }));
 
     const overview = {
       table: {
@@ -697,6 +750,8 @@ export class TableService {
         pendingSubmissions,
         reviewedSubmissions,
       },
+      dossierSubmissions: formattedDossierSubmissions,
+      characterSubmissions: formattedDossierSubmissions,
       timeline: {
         totalEvents,
         hasTimeline: totalEvents > 0,
@@ -1129,6 +1184,7 @@ export class TableService {
         tableId: true,
         userId: true,
         name: true,
+        creativeDossier: true,
         level: true,
         status: true,
         createdAt: true,
@@ -1164,6 +1220,7 @@ export class TableService {
       tableId: character.tableId,
       userId: character.userId,
       name: character.name,
+      creativeDossier: character.creativeDossier,
       level: character.level,
       status: character.status,
       class: character.class,
@@ -1203,6 +1260,7 @@ export class TableService {
         tableId: true,
         userId: true,
         name: true,
+        creativeDossier: true,
         level: true,
         status: true,
         createdAt: true,

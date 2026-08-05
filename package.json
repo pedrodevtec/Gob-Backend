@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "nodemon src/server.ts",
     "install:build": "npm install && tsc",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:seed": "ts-node prisma/seed.ts",

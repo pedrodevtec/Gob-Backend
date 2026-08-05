@@ -1,7 +1,9 @@
 import { Request } from "express";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../../errors/AppError";
 import {
   getBody,
+  optionalObject,
   optionalNumber,
   optionalString,
   requireString,
@@ -20,11 +22,20 @@ const allowedAvatarIds = new Set(["blade", "crown", "phoenix", "moon"]);
 const allowedTitleIds = new Set(["wanderer", "hunter", "warden", "arcanist"]);
 const allowedBannerIds = new Set(["royal", "ocean", "ember", "verdant"]);
 
+const optionalJsonObject = (
+  value: unknown,
+  fieldName: string
+): Prisma.InputJsonObject | undefined => {
+  const object = optionalObject(value, fieldName);
+  return object as Prisma.InputJsonObject | undefined;
+};
+
 export const validateCreateCharacter = (req: Request): void => {
   const body = getBody(req);
   const parsed: CreateCharacterInput = {
     name: requireString(body.name ?? body.nome, "name", 2, 40),
     classId: optionalString(body.classId, "classId", 1, 80),
+    creativeDossier: optionalJsonObject(body.creativeDossier, "creativeDossier"),
   };
 
   req.body = parsed;
@@ -34,9 +45,10 @@ export const validateUpdateCharacterProfile = (req: Request): void => {
   const body = getBody(req);
   const parsed: UpdateCharacterProfileInput = {
     name: optionalString(body.name ?? body.nome, "name", 2, 40),
+    creativeDossier: optionalJsonObject(body.creativeDossier, "creativeDossier"),
   };
 
-  if (!parsed.name) {
+  if (parsed.name === undefined && parsed.creativeDossier === undefined) {
     throw new AppError(400, "Nenhum campo valido enviado para atualizar personagem.", "VALIDATION_ERROR");
   }
 

@@ -1,10 +1,14 @@
+import { Prisma } from "@prisma/client";
+
 export interface CreateCharacterInput {
   name: string;
   classId?: string;
+  creativeDossier?: Prisma.InputJsonValue;
 }
 
 export interface UpdateCharacterProfileInput {
   name?: string;
+  creativeDossier?: Prisma.InputJsonValue;
 }
 
 export interface UpdateCharacterProgressInput {

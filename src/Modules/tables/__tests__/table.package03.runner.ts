@@ -38,10 +38,15 @@ test("Package 03 rejeita ownership e auditoria enviados pelo cliente", () => {
 });
 
 test("Package 03 normaliza payload minimo de ficha", () => {
-  const request = req({ name: "Ayla", archetypeKey: "guardia-cautelosa" });
+  const request = req({
+    name: "Ayla",
+    archetypeKey: "guardia-cautelosa",
+    creativeDossier: { hook: "Juramento antigo", tone: "sombrio" },
+  });
   validateCreatePackage03Character(request);
   assert.equal(request.body.name, "Ayla");
   assert.equal(request.body.archetypeKey, "guardia-cautelosa");
+  assert.deepEqual(request.body.creativeDossier, { hook: "Juramento antigo", tone: "sombrio" });
   assert.equal(request.body.ownerUserId, undefined);
 });
 

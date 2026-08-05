@@ -1,12 +1,19 @@
 import {
+  ContextLayer,
+  ContextVersionStatus,
   GameplayDifficulty,
   Prisma,
   PrismaClient,
+  PublicCampaignStatus,
   ShopProductAssetKind,
   AccountRole,
+  TableMemberRole,
+  TableMemberStatus,
+  TableStatus,
 } from "@prisma/client";
 
 const prisma = new PrismaClient();
+const PILOT_CAMPAIGN_SLUG = "pilot-v1";
 
 type SeedNpc = {
   name: string;
@@ -93,6 +100,207 @@ async function main() {
       });
     }
   }
+
+  const existingSeedUsers = await prisma.user.findMany({
+    orderBy: { email: "asc" },
+    take: 2,
+  });
+  const pilotMaster =
+    existingSeedUsers.length === 1
+      ? await prisma.user.update({
+          where: { id: existingSeedUsers[0].id },
+          data: {
+            accountRole: AccountRole.ADMIN,
+            emailVerifiedAt: existingSeedUsers[0].emailVerifiedAt ?? new Date(),
+          },
+        })
+      : await prisma.user.upsert({
+          where: { email: "pilot-master@gob.local" },
+          update: {
+            nome: "Mestre do Piloto",
+            accountRole: AccountRole.ADMIN,
+          },
+          create: {
+            nome: "Mestre do Piloto",
+            email: "pilot-master@gob.local",
+            senha: "seed-disabled-password",
+            accountRole: AccountRole.ADMIN,
+            emailVerifiedAt: new Date(),
+          },
+        });
+
+  const pilotSetting = await prisma.setting.upsert({
+    where: { stableKey: "bravantus" },
+    update: {
+      title: "Guardian of Bravantus",
+      description: "Cenario oficial do piloto de criacao de personagens.",
+      updatedById: pilotMaster.id,
+    },
+    create: {
+      stableKey: "bravantus",
+      title: "Guardian of Bravantus",
+      description: "Cenario oficial do piloto de criacao de personagens.",
+      createdById: pilotMaster.id,
+    },
+  });
+
+  const pilotEpisode = await prisma.episode.upsert({
+    where: {
+      settingId_stableKey: {
+        settingId: pilotSetting.id,
+        stableKey: "episodio-1-chamado-aos-marcados",
+      },
+    },
+    update: {
+      title: "Chamado aos Marcados",
+      synopsis: "Teste fechado de criacao de personagens de Guardian of Bravantus.",
+      updatedById: pilotMaster.id,
+    },
+    create: {
+      settingId: pilotSetting.id,
+      stableKey: "episodio-1-chamado-aos-marcados",
+      title: "Chamado aos Marcados",
+      synopsis: "Teste fechado de criacao de personagens de Guardian of Bravantus.",
+      createdById: pilotMaster.id,
+    },
+  });
+
+  const pilotContextVersion = await prisma.contextVersion.upsert({
+    where: {
+      settingId_episodeId_layer_version: {
+        settingId: pilotSetting.id,
+        episodeId: pilotEpisode.id,
+        layer: ContextLayer.PLAYTEST_VALIDATION,
+        version: 1,
+      },
+    },
+    update: {
+      status: ContextVersionStatus.PUBLISHED,
+      origin: "seed:pilot-v1",
+      approvalNote: "Contexto publico minimo para o playtest pilot-v1.",
+      updatedById: pilotMaster.id,
+      approvedById: pilotMaster.id,
+      publishedAt: new Date(),
+    },
+    create: {
+      settingId: pilotSetting.id,
+      episodeId: pilotEpisode.id,
+      layer: ContextLayer.PLAYTEST_VALIDATION,
+      version: 1,
+      status: ContextVersionStatus.PUBLISHED,
+      origin: "seed:pilot-v1",
+      approvalNote: "Contexto publico minimo para o playtest pilot-v1.",
+      createdById: pilotMaster.id,
+      approvedById: pilotMaster.id,
+      publishedAt: new Date(),
+    },
+  });
+
+  const existingPilotCampaign = await prisma.publicCampaign.findUnique({
+    where: { slug: PILOT_CAMPAIGN_SLUG },
+    select: { id: true, tableId: true },
+  });
+  const existingPilotTable = existingPilotCampaign
+    ? await prisma.table.findUnique({ where: { id: existingPilotCampaign.tableId } })
+    : await prisma.table.findUnique({ where: { joinCode: "PILOT1" } });
+
+  const pilotTable = existingPilotTable
+    ? await prisma.table.update({
+        where: { id: existingPilotTable.id },
+        data: {
+          masterId: pilotMaster.id,
+          settingId: pilotSetting.id,
+          episodeId: pilotEpisode.id,
+          contextVersionId: pilotContextVersion.id,
+          name: "Chamado aos Marcados",
+          description: "Mesa do teste fechado de criacao de personagens de Guardian of Bravantus.",
+          maxPlayers: 50,
+          status: TableStatus.RECRUITING,
+        },
+      })
+    : await prisma.table.create({
+        data: {
+          masterId: pilotMaster.id,
+          settingId: pilotSetting.id,
+          episodeId: pilotEpisode.id,
+          contextVersionId: pilotContextVersion.id,
+          name: "Chamado aos Marcados",
+          description: "Mesa do teste fechado de criacao de personagens de Guardian of Bravantus.",
+          joinCode: "PILOT1",
+          maxPlayers: 50,
+          status: TableStatus.RECRUITING,
+        },
+      });
+
+  await prisma.tableMember.upsert({
+    where: {
+      tableId_userId: {
+        tableId: pilotTable.id,
+        userId: pilotMaster.id,
+      },
+    },
+    update: {
+      role: TableMemberRole.MASTER,
+      status: TableMemberStatus.ACTIVE,
+      joinedAt: new Date(),
+    },
+    create: {
+      tableId: pilotTable.id,
+      userId: pilotMaster.id,
+      role: TableMemberRole.MASTER,
+      status: TableMemberStatus.ACTIVE,
+    },
+  });
+
+  await prisma.tableWorld.upsert({
+    where: { tableId: pilotTable.id },
+    update: {
+      campaignTitle: "Chamado aos Marcados",
+      summary: "Teste fechado de criacao de personagens de Guardian of Bravantus.",
+      tone: "Fantasia sombria heroica",
+      characterCreationCriteria: {
+        builderConfigVersion: "pilot-v1",
+        requiresCreativeDossier: true,
+      },
+    },
+    create: {
+      tableId: pilotTable.id,
+      campaignTitle: "Chamado aos Marcados",
+      summary: "Teste fechado de criacao de personagens de Guardian of Bravantus.",
+      tone: "Fantasia sombria heroica",
+      rules: Prisma.JsonNull,
+      characterCreationCriteria: {
+        builderConfigVersion: "pilot-v1",
+        requiresCreativeDossier: true,
+      },
+    },
+  });
+
+  await prisma.publicCampaign.upsert({
+    where: { slug: PILOT_CAMPAIGN_SLUG },
+    update: {
+      tableId: pilotTable.id,
+      title: "Chamado aos Marcados",
+      description: "Teste fechado de criacao de personagens de Guardian of Bravantus",
+      status: PublicCampaignStatus.ACTIVE,
+      builderConfigVersion: "pilot-v1",
+      consentVersion: "research-pilot-v1",
+      updatedById: pilotMaster.id,
+      activatedAt: new Date(),
+      closedAt: null,
+    },
+    create: {
+      tableId: pilotTable.id,
+      slug: PILOT_CAMPAIGN_SLUG,
+      title: "Chamado aos Marcados",
+      description: "Teste fechado de criacao de personagens de Guardian of Bravantus",
+      status: PublicCampaignStatus.ACTIVE,
+      builderConfigVersion: "pilot-v1",
+      consentVersion: "research-pilot-v1",
+      createdById: pilotMaster.id,
+      activatedAt: new Date(),
+    },
+  });
 
  const classes = [
   {

@@ -41,6 +41,17 @@ npx prisma db seed
 npm run dev
 ```
 
+## Deploy
+
+Para Vercel, siga [`docs/vercel-deploy-checklist.md`](docs/vercel-deploy-checklist.md).
+
+Antes do deploy, aplique migrations e rode o seed do `pilot-v1` fora do build da Vercel:
+
+```bash
+npx prisma migrate deploy
+npm run prisma:seed
+```
+
 ### Manutencao de dados
 
 Para resetar dados de personagens e/ou remover missoes criadas manualmente:

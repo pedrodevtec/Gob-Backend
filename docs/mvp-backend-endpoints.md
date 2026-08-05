@@ -69,6 +69,242 @@ Metadata publica permitida: ids tecnicos, fonte do fluxo, versao de metadata, co
 
 Metadata proibida: senha, token, Authorization, prompt integral, ficha completa, respostas narrativas, segredo de Mestre, conteudo `gm_secret` ou marcadores equivalentes.
 
+## Inventario geral de rotas disponiveis
+
+Este inventario reflete as rotas montadas em `src/server.ts` e nos arquivos `*.routes.ts` / `*.routers.ts`.
+
+Legenda:
+
+- `Publico`: nao exige bearer JWT.
+- `Auth`: exige bearer JWT.
+- `Admin`: exige bearer JWT com `accountRole=ADMIN`.
+- `Mesa`: exige membership ativa na mesa; a regra exata depende do endpoint.
+- `Mestre`: exige papel `MASTER` na mesa.
+- `Jogador`: exige papel `PLAYER` na mesa.
+- `Body`: `sim` quando ha validacao ou payload esperado; `-` quando normalmente vazio.
+- `Detalhe`: `MVP abaixo` significa que ha contrato detalhado neste documento; `OpenAPI` significa consultar tambem `/docs` ou `/docs.json`.
+
+### Tecnicas
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/health` | Publico | - | - | status `ok` | erro inesperado | publico: status tecnico; secreto: env/credenciais | MVP abaixo |
+| GET | `/ready` | Publico | - | - | status `ready` | falha de banco | publico: prontidao; secreto: URL/credenciais do banco | MVP abaixo |
+| GET | `/docs.json` | Publico | - | - | OpenAPI JSON | erro inesperado | publico: contratos; secreto: valores de env | MVP abaixo |
+| GET | `/docs` | Publico | - | - | Swagger UI | erro inesperado | publico: contratos; secreto: valores de env | MVP abaixo |
+| GET | `/api/v1/meta/version` | Publico | - | - | nome, versao, ambiente | erro inesperado | publico: metadados da API; secreto: env/credenciais | MVP abaixo |
+
+### Auth e usuarios
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| POST | `/api/v1/auth/register` | Publico | - | sim | usuario criado, entrega de e-mail | `400`, `409 EMAIL_ALREADY_EXISTS` | publico: usuario; secreto: senha/hash/token | MVP abaixo |
+| POST | `/api/v1/auth/login` | Publico | - | sim | JWT e usuario | `401`, `403 EMAIL_NOT_VERIFIED` | publico: usuario/token ao dono; secreto: senha/hash/secret | MVP abaixo |
+| POST | `/api/v1/auth/email-verification/confirm` | Publico | - | sim | `EMAIL_VERIFIED` | `400`, `409` | publico: status; secreto: token/hash | MVP abaixo |
+| POST | `/api/v1/auth/email-verification/resend` | Publico | - | sim | mensagem generica | `400`, `429` | publico: mensagem; secreto: existencia da conta | MVP abaixo |
+| GET | `/api/v1/auth/me` | Auth | - | - | usuario autenticado | `401` | publico ao dono; secreto: senha/hash | MVP abaixo |
+| GET | `/api/v1/users/me/profile` | Auth | - | - | perfil do usuario | `401` | publico ao dono; secreto: senha/hash | OpenAPI |
+| PATCH | `/api/v1/users/me/profile` | Auth | - | sim | perfil atualizado | `400`, `401`, `409` | publico ao dono; secreto: senha/hash | OpenAPI |
+| POST | `/api/users/register` | Publico | alias legado | sim | usuario criado | `400`, `409` | igual a `/api/v1/auth/register` | legado |
+| POST | `/api/users/login` | Publico | alias legado | sim | JWT e usuario | `401`, `403` | igual a `/api/v1/auth/login` | legado |
+| GET | `/api/users/me` | Auth | alias legado | - | usuario autenticado | `401` | igual a `/api/v1/auth/me` | legado |
+
+### Builder e contexto
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/v1/builder/configs/active` | Publico | - | - | Builder ativo `pilot-v1` | `404`, `500 BUILDER_SECRET_CONTENT_DETECTED` | publico: catalogos; secreto: canon/GM | MVP abaixo |
+| GET | `/api/v1/builder/configs/{version}` | Publico | `version` | - | Builder por versao | `404`, `500` | publico: catalogos; secreto: canon/GM | MVP abaixo |
+| GET | `/api/v1/context/settings/{settingStableKey}/episodes/{episodeStableKey}/active-public` | Publico | `settingStableKey`, `episodeStableKey` | - | contexto publico ativo | `404` | publico: contexto publicado; secreto: unidades secretas | OpenAPI |
+| GET | `/api/v1/context/versions/{id}/public` | Publico | `id` | - | versao publica | `404` | publico: unidades publicas; secreto: unidades secretas | OpenAPI |
+| GET | `/api/v1/context/units/{id}/public` | Publico | `id` | - | unidade publica | `404` | publico: unidade publica; secreto: unidade restrita | OpenAPI |
+| POST | `/api/v1/context/admin/settings` | Admin | - | sim | setting criado | `400`, `403` | admin: conteudo operacional; jogador: indisponivel | OpenAPI |
+| POST | `/api/v1/context/admin/episodes` | Admin | - | sim | episodio criado | `400`, `403` | admin only | OpenAPI |
+| POST | `/api/v1/context/admin/versions` | Admin | - | sim | versao criada | `400`, `403` | admin only | OpenAPI |
+| POST | `/api/v1/context/admin/units` | Admin | - | sim | unidade criada | `400`, `403` | pode conter secreto; nao enviar ao jogador sem filtro publico | OpenAPI |
+| POST | `/api/v1/context/admin/versions/{id}/publish` | Admin | `id` | - | versao publicada | `403`, `404`, `409` | admin only | OpenAPI |
+| POST | `/api/v1/context/admin/versions/{id}/archive` | Admin | `id` | - | versao arquivada | `403`, `404`, `409` | admin only | OpenAPI |
+| GET | `/api/v1/context/admin/versions` | Admin | filtros conforme OpenAPI | - | lista de versoes | `403` | admin only | OpenAPI |
+| GET | `/api/v1/context/admin/versions/{id}` | Admin | `id` | - | versao autorizada | `403`, `404` | pode incluir conteudo restrito | OpenAPI |
+
+### Campanhas, pesquisa e analytics
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/v1/campaigns/public/consent` | Publico | - | - | documento de consentimento | erro inesperado | publico: texto/version; secreto: aceites | MVP abaixo |
+| GET | `/api/v1/campaigns/public/final-survey` | Publico | - | - | configuracao da pesquisa | erro inesperado | publico: perguntas/version; secreto: respostas | MVP abaixo |
+| GET | `/api/v1/campaigns/public/{slug}` | Publico | `slug` | - | landing publica | `404` generico | publico: landing; secreto: tableId/joinCode/indisponibilidade interna | MVP abaixo |
+| GET | `/api/v1/campaigns/public/{slug}/resume` | Auth | `slug` | - | retomada do jogador | `401`, `404` | proprio progresso; secreto: outros jogadores/GM | MVP abaixo |
+| POST | `/api/v1/campaigns/public/{slug}/consent` | Auth | `slug` | sim | consentimento registrado | `400`, `401`, `404` | proprio consentimento; secreto: outros usuarios | MVP abaixo |
+| POST | `/api/v1/campaigns/public/{slug}/join` | Auth | `slug` | - | membership `PLAYER` | `401`, `404`, `409` | proprio vinculo; secreto: joinCode/outros membros | MVP abaixo |
+| GET | `/api/v1/campaigns/public/{slug}/final-survey/me` | Auth/Jogador | `slug` | - | minha resposta ou null | `401`, `403`, `404` | propria resposta; secreto: respostas alheias | MVP abaixo |
+| PUT | `/api/v1/campaigns/public/{slug}/final-survey/me` | Auth/Jogador | `slug` | sim | pesquisa salva | `400`, `401`, `403`, `404` | propria resposta; secreto: respostas alheias | MVP abaixo |
+| POST | `/api/v1/campaigns/public/{slug}/events` | Auth | `slug` | sim | evento registrado | `400`, `403`, `404` | evento tecnico; secreto: prompt/ficha/respostas/segredos | MVP abaixo |
+| POST | `/api/v1/campaigns/admin` | Admin | - | sim | campanha `DRAFT` criada | `400`, `403`, `404`, `409` | admin; secreto para jogador ate `ACTIVE` | MVP abaixo |
+| GET | `/api/v1/campaigns/admin/{campaignId}/operations` | Admin | `campaignId` | - | painel operacional | `403`, `404` | agregados admin; secreto: respostas narrativas/prompts/ficha completa | MVP abaixo |
+| PATCH | `/api/v1/campaigns/admin/{campaignId}` | Admin | `campaignId` | sim | campanha atualizada | `400`, `403`, `404`, `409` | admin only | MVP abaixo |
+| POST | `/api/v1/campaigns/admin/{campaignId}/status` | Admin | `campaignId` | sim | status atualizado | `400`, `403`, `404`, `409` | admin only | MVP abaixo |
+
+### Mesas, IA de mesa e personagens de mesa
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| POST | `/api/v1/tables` | Auth | - | sim | mesa criada | `400`, `401` | criador/membros; secreto: joinCode fora de fluxo autorizado | OpenAPI |
+| GET | `/api/v1/tables` | Auth | - | - | mesas do usuario | `401` | somente mesas autorizadas | OpenAPI |
+| GET | `/api/v1/tables/dashboard` | Auth | - | - | dashboard do usuario | `401` | dados do usuario; nao global | OpenAPI |
+| POST | `/api/v1/tables/join` | Auth | - | sim | entrou por codigo | `400`, `401`, `404`, `409` | proprio vinculo; secreto: outros membros | OpenAPI |
+| PATCH | `/api/v1/tables/{tableId}` | Auth/Mesa | `tableId` | sim | mesa atualizada | `400`, `403`, `404` | conforme papel; secreto: dados de mesa nao autorizada | OpenAPI |
+| GET | `/api/v1/tables/{id}` | Auth/Mesa | `id` | - | detalhe da mesa | `403`, `404` | membros autorizados | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/members` | Auth/Mesa | `tableId` | - | membros | `403`, `404` | membros da mesa; nao publico | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/invitations` | Auth/Mestre | `tableId` | sim | convite criado | `400`, `403`, `404` | convite autorizado; secreto: token/hash | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/invitations` | Auth/Mestre | `tableId` | - | convites | `403`, `404` | mestre; secreto para jogador | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/invitations/{invitationId}/revoke` | Auth/Mestre | `tableId`, `invitationId` | - | convite revogado | `403`, `404`, `409` | mestre only | OpenAPI |
+| POST | `/api/v1/table-invitations/accept` | Auth | - | sim | convite aceito | `400`, `401`, `404`, `409` | proprio vinculo; secreto: token/hash | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/context/player` | Auth/Jogador | `tableId` | - | contexto seguro do jogador | `403`, `404` | publico ao jogador; secreto: GM/canon secreto | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/context/master` | Auth/Mestre | `tableId` | - | contexto do mestre | `403`, `404` | mestre; secreto para jogador | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/master/overview` | Auth/Mestre | `tableId` | - | overview do mestre | `403`, `404` | mestre; pode conter dados operacionais | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/player/overview` | Auth/Jogador | `tableId` | - | overview do jogador | `403`, `404` | proprio jogador; sem segredo | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/ai/world-summary` | Auth/Mestre | `tableId` | sim | sugestao IA | `400`, `403`, `429`, `503` | mestre; nao salva automaticamente | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/ai/mission-ideas` | Auth/Mestre | `tableId` | sim | sugestoes IA | `400`, `403`, `429`, `503` | mestre; nao salva automaticamente | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/ai/traits` | Auth/Mestre | `tableId` | sim | sugestoes de traits | `400`, `403`, `404`, `429`, `503` | mestre; nao salva automaticamente | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/ai/timeline-summary` | Auth/Mestre | `tableId` | sim | resumo sugerido | `400`, `403`, `429`, `503` | mestre; nao salva automaticamente | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/player-ai/character-help` | Auth/Jogador | `tableId` | sim | sugestoes assistivas | `400`, `403`, `404`, `429`, `503` | proprio jogador; sem segredo; nao altera ficha | MVP abaixo |
+| PATCH | `/api/v1/tables/{tableId}/player-ai/suggestions/{suggestionId}/decision` | Auth/Jogador | `tableId`, `suggestionId` | sim | decisao registrada | `400`, `403`, `404`, `409` | proprio jogador; nao altera ficha | MVP abaixo |
+| POST | `/api/v1/tables/{tableId}/characters` | Auth/Jogador | `tableId` | sim | rascunho criado | `400`, `403`, `409` | proprio rascunho | MVP abaixo |
+| GET | `/api/v1/tables/{tableId}/characters/me` | Auth/Jogador | `tableId` | - | meu personagem/null | `403`, `404` | proprio personagem | MVP abaixo |
+| GET | `/api/v1/tables/{tableId}/characters` | Auth/Mesa | `tableId`, query de lista | - | personagens paginados | `400`, `403` | autorizado por papel; cuidado com dados alheios | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/characters/{characterId}` | Auth/Mesa | `tableId`, `characterId` | - | personagem | `403`, `404` | dono/mestre; nao publico | MVP abaixo |
+| PATCH | `/api/v1/tables/{tableId}/characters/{characterId}` | Auth/Jogador | `tableId`, `characterId` | sim | rascunho atualizado | `400`, `403`, `404`, `409` | proprio rascunho | MVP abaixo |
+| PATCH | `/api/v1/tables/{tableId}/characters/{characterId}/episode-answers` | Auth/Jogador | `tableId`, `characterId` | sim | respostas salvas | `400`, `403`, `409` | proprio jogador; mestre apos envio | MVP abaixo |
+| POST | `/api/v1/tables/{tableId}/characters/{characterId}/submit` | Auth/Jogador | `tableId`, `characterId` | - | submetido | `400`, `403`, `404`, `409` | proprio status; fila completa e secreta | MVP abaixo |
+| GET | `/api/v1/tables/{tableId}/character-reviews` | Auth/Mestre | `tableId`, query | - | fila de revisao | `403`, `404` | mestre only | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/characters/{characterId}/reviews` | Auth/Mesa | `tableId`, `characterId` | - | eventos de revisao | `403`, `404` | dono/mestre | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/characters/{characterId}/request-changes` | Auth/Mestre | `tableId`, `characterId` | sim | ajuste solicitado | `400`, `403`, `404`, `409` | mestre/dono; feedback controlado | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/characters/{characterId}/approve` | Auth/Mestre | `tableId`, `characterId` | sim | personagem aprovado | `400`, `403`, `404`, `409` | mestre/dono | OpenAPI |
+| PATCH | `/api/v1/tables/{tableId}/characters/{characterId}/review` | Auth/Mestre | `tableId`, `characterId` | sim | revisao registrada | `400`, `403`, `404` | mestre/dono | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/characters/{characterId}/traits` | Auth/Mesa | `tableId`, `characterId`, query | - | traits | `400`, `403`, `404` | autorizado; nao publico global | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/characters/{characterId}/traits` | Auth/Mestre | `tableId`, `characterId` | sim | trait criada | `400`, `403`, `404` | mestre/dono conforme retorno | OpenAPI |
+| DELETE | `/api/v1/tables/{tableId}/characters/{characterId}/traits/{traitId}` | Auth/Mestre | ids | - | trait removida | `403`, `404` | mestre only | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/characters/{characterId}/trait-suggestions` | Auth/Mesa | ids | - | sugestoes | `403`, `404` | mestre/dono conforme regra | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/characters/{characterId}/trait-suggestions` | Auth/Mestre | ids | sim | sugestao criada | `400`, `403`, `404` | mestre; jogador ve se autorizado | OpenAPI |
+| PATCH | `/api/v1/tables/{tableId}/characters/{characterId}/trait-suggestions/{suggestionId}/apply` | Auth/Mesa | ids | - | sugestao aplicada | `403`, `404`, `409` | fluxo separado da IA do jogador | OpenAPI |
+| PATCH | `/api/v1/tables/{tableId}/characters/{characterId}/trait-suggestions/{suggestionId}/dismiss` | Auth/Mesa | ids | - | sugestao dispensada | `403`, `404`, `409` | fluxo separado da IA do jogador | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/world` | Auth/Mesa | `tableId` | - | mundo da mesa | `403`, `404` | membros; cuidado com campos de mestre | OpenAPI |
+| PUT | `/api/v1/tables/{tableId}/world` | Auth/Mestre | `tableId` | sim | mundo salvo | `400`, `403` | mestre; jogador so via contexto seguro | OpenAPI |
+
+### Missoes de mesa, submissions e timeline
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| POST | `/api/v1/tables/{tableId}/missions` | Auth/Mestre | `tableId` | sim | missao criada | `400`, `403` | mestre; jogador ve missao ativa permitida | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/missions` | Auth/Mesa | `tableId`, query | - | missoes paginadas | `400`, `403` | membros autorizados | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/missions/{missionId}` | Auth/Mesa | ids | - | missao | `403`, `404` | membros autorizados | OpenAPI |
+| PATCH | `/api/v1/tables/{tableId}/missions/{missionId}` | Auth/Mestre | ids | sim | missao atualizada | `400`, `403`, `404` | mestre | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/missions/{missionId}/submissions` | Auth/Jogador | ids | sim | submissao criada | `400`, `403`, `404`, `409` | jogador/mestre; conteudo do jogador | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/missions/{missionId}/submissions` | Auth/Mestre | ids | - | submissions da missao | `403`, `404` | mestre only | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/submissions/me` | Auth/Jogador | `tableId`, query | - | minhas submissions | `400`, `403` | proprio jogador | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/submissions` | Auth/Mestre | `tableId`, query | - | submissions da mesa | `400`, `403` | mestre only | OpenAPI |
+| PATCH | `/api/v1/tables/{tableId}/missions/{missionId}/submissions/{submissionId}/review` | Auth/Mestre | ids | sim | review de submissao | `400`, `403`, `404` | mestre/dono conforme retorno | OpenAPI |
+| GET | `/api/v1/tables/{tableId}/timeline` | Auth/Mesa | `tableId`, query | - | timeline paginada | `400`, `403` | membros autorizados; cuidado com segredo | OpenAPI |
+| POST | `/api/v1/tables/{tableId}/timeline` | Auth/Mestre | `tableId` | sim | evento criado | `400`, `403` | mestre; visibilidade depende do uso | OpenAPI |
+
+### Personagens legados, inventario, recompensas, transacoes, loja, trocas e PvP
+
+Estas rotas continuam disponiveis no backend, mas combate, rolagens, jogo fisico e sessao nao pertencem ao MVP do piloto atual.
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/v1/characters/classes` | Auth | - | - | classes | `401` | catalogo autenticado | OpenAPI |
+| GET | `/api/v1/characters` | Auth | query conforme OpenAPI | - | personagens do usuario | `401` | proprio usuario | OpenAPI |
+| POST | `/api/v1/characters` | Auth | - | sim | personagem legado criado | `400`, `401` | proprio usuario | OpenAPI |
+| POST | `/api/v1/characters/create` | Auth | alias | sim | personagem legado criado | `400`, `401` | proprio usuario | legado |
+| GET | `/api/v1/characters/rankings` | Auth | `limit` | - | ranking | `400`, `401` | perfil publico/ranking | OpenAPI |
+| GET | `/api/v1/characters/{id}/public-profile` | Auth | `id` | - | perfil publico | `401`, `404` | perfil publico permitido | OpenAPI |
+| GET | `/api/v1/characters/{id}` | Auth | `id` | - | personagem | `401`, `403`, `404` | dono/autorizado | OpenAPI |
+| GET | `/api/v1/characters/{id}/summary` | Auth | `id` | - | resumo | `401`, `403`, `404` | dono/autorizado | OpenAPI |
+| PUT | `/api/v1/characters/{id}` | Auth | `id` | sim | perfil atualizado | `400`, `401`, `403`, `404` | dono | OpenAPI |
+| PATCH | `/api/v1/characters/{id}/progress` | Auth | `id` | sim | progresso atualizado | `400`, `401`, `403` | dono/sistema | OpenAPI |
+| PATCH | `/api/v1/characters/{id}/position` | Auth | `id` | sim | posicao atualizada | `400`, `401`, `403` | dono/sistema | OpenAPI |
+| PATCH | `/api/v1/characters/{id}/customization` | Auth | `id` | sim | customizacao atualizada | `400`, `401`, `403` | dono | OpenAPI |
+| POST | `/api/v1/characters/{id}/awaken` | Auth | `id` | sim | despertar executado | `400`, `401`, `403` | dono | OpenAPI |
+| DELETE | `/api/v1/characters/{id}` | Auth | `id` | - | personagem removido | `401`, `403`, `404` | dono | OpenAPI |
+| GET | `/api/characters/...` | Auth | alias legado | varia | varia | varia | igual a `/api/v1/characters/...` | legado |
+| GET | `/api/v1/inventory/characters/{characterId}` | Auth | `characterId` | - | inventario | `401`, `403`, `404` | dono/autorizado | OpenAPI |
+| GET | `/api/v1/inventory/characters/{characterId}/wallet` | Auth | `characterId` | - | carteira | `401`, `403`, `404` | dono/autorizado | OpenAPI |
+| POST | `/api/v1/inventory/characters/{characterId}/items/{itemId}/use` | Auth | ids | sim | item usado | `400`, `403`, `404`, `409` | dono; efeitos legados | OpenAPI |
+| POST | `/api/v1/inventory/characters/{characterId}/equipments/{equipmentId}/equip` | Auth | ids | - | equipamento equipado | `403`, `404`, `409` | dono; fora do Builder MVP | OpenAPI |
+| POST | `/api/v1/inventory/characters/{characterId}/equipments/{equipmentId}/unequip` | Auth | ids | - | equipamento removido | `403`, `404`, `409` | dono | OpenAPI |
+| POST | `/api/v1/rewards/claim` | Auth | - | sim | recompensa reivindicada | `400`, `403`, `404`, `409` | dono | OpenAPI |
+| GET | `/api/v1/rewards/characters/{characterId}` | Auth | `characterId` | - | recompensas | `403`, `404` | dono/autorizado | OpenAPI |
+| GET | `/api/v1/transactions/characters/{characterId}` | Auth | `characterId` | - | transacoes | `403`, `404` | dono/autorizado | OpenAPI |
+| GET | `/api/v1/shop/catalog` | Publico | - | - | catalogo loja | erro inesperado | publico: produtos ativos | OpenAPI |
+| GET | `/api/v1/shop/market/characters/{characterId}` | Auth | `characterId` | - | mercado do personagem | `403`, `404` | dono/autorizado | OpenAPI |
+| POST | `/api/v1/shop/market/purchases` | Auth | - | sim | compra mercado | `400`, `403`, `404`, `409` | dono | OpenAPI |
+| POST | `/api/v1/shop/market/sales` | Auth | - | sim | venda mercado | `400`, `403`, `404`, `409` | dono | OpenAPI |
+| POST | `/api/v1/shop/purchases` | Auth | - | sim | compra | `400`, `403`, `404`, `409` | dono | OpenAPI |
+| GET | `/api/v1/shop/payment-orders` | Auth | query conforme OpenAPI | - | pedidos de pagamento | `401` | proprio usuario/admin conforme regra | OpenAPI |
+| POST | `/api/v1/shop/payment-orders` | Auth | - | sim | pedido criado | `400`, `401` | proprio usuario; secreto: provider internals | OpenAPI |
+| POST | `/api/v1/shop/webhooks/payments` | Publico/webhook | - | sim | webhook processado | `400`, `401/403 se validado`, `409` | secreto: assinatura/provider payload sensivel | OpenAPI |
+| GET | `/api/v1/trades/characters/{characterId}` | Auth | `characterId` | - | trocas | `403`, `404` | dono/autorizado | OpenAPI |
+| POST | `/api/v1/trades/requests` | Auth | - | sim | troca solicitada | `400`, `403`, `404`, `409` | participantes da troca | OpenAPI |
+| POST | `/api/v1/trades/{tradeId}/respond` | Auth | `tradeId` | sim | resposta registrada | `400`, `403`, `404`, `409` | participantes da troca | OpenAPI |
+| GET | `/api/v1/pvp/rankings` | Auth | query conforme OpenAPI | - | ranking PvP | `401` | ranking publico/autenticado | OpenAPI |
+| GET | `/api/v1/pvp/characters/{characterId}/overview` | Auth | `characterId` | - | overview PvP | `403`, `404` | dono/autorizado | OpenAPI |
+| POST | `/api/v1/pvp/matches` | Auth | - | sim | partida criada | `400`, `403`, `404`, `409` | participantes | OpenAPI |
+
+### Gameplay legado
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/v1/gameplay/journey` | Publico | - | - | opcoes de jornada | erro inesperado | publico: catalogo gameplay | OpenAPI |
+| GET | `/api/v1/gameplay/monsters` | Publico | query conforme OpenAPI | - | monstros | erro inesperado | publico: catalogo legado | OpenAPI |
+| GET | `/api/v1/gameplay/bounties` | Publico | query conforme OpenAPI | - | bounties | erro inesperado | publico: catalogo legado | OpenAPI |
+| GET | `/api/v1/gameplay/missions` | Publico | query conforme OpenAPI | - | missoes legadas | erro inesperado | publico: catalogo legado | OpenAPI |
+| GET | `/api/v1/gameplay/trainings` | Publico | query conforme OpenAPI | - | treinamentos legados | erro inesperado | publico: catalogo legado | OpenAPI |
+| GET | `/api/v1/gameplay/npcs` | Publico | query conforme OpenAPI | - | NPCs | erro inesperado | publico: catalogo legado | OpenAPI |
+| GET | `/api/v1/gameplay/characters/{characterId}/missions/sessions` | Auth | `characterId` | - | sessoes de missao | `403`, `404` | dono/autorizado; fora do MVP | OpenAPI |
+| GET | `/api/v1/gameplay/characters/{characterId}/missions/sessions/{sessionId}` | Auth | ids | - | sessao de missao | `403`, `404` | dono/autorizado; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/missions/start` | Auth | `characterId` | sim | jornada iniciada | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/missions/sessions/{sessionId}/progress` | Auth | ids | sim | jornada progredida | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/missions/sessions/{sessionId}/abandon` | Auth | ids | - | jornada abandonada | `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/actions/bounty-hunt` | Auth | `characterId` | sim | acao executada | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/actions/missions` | Auth | `characterId` | sim | acao executada | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/actions/training` | Auth | `characterId` | sim | treino executado | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/actions/npc-interaction` | Auth | `characterId` | sim | interacao executada | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/actions/market` | Auth | `characterId` | sim | acao de mercado | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+| POST | `/api/v1/gameplay/characters/{characterId}/combat-sessions/{combatSessionId}/actions` | Auth | ids | sim | turno de combate | `400`, `403`, `404`, `409` | dono; fora do MVP | OpenAPI |
+
+### Admin legado de conteudo
+
+Todas as rotas abaixo exigem `Admin`. Elas podem manipular catalogos legados usados por gameplay, loja e admin interno. Nao sao parte do fluxo MVP do piloto, mas continuam disponiveis.
+
+| Metodo | Path | Auth | Params/query | Body | Sucesso | Erros relevantes | Publico vs secreto | Detalhe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/api/v1/admin/monsters` | Admin | query conforme OpenAPI | - | lista | `403` | admin/catalogo | OpenAPI |
+| POST | `/api/v1/admin/monsters` | Admin | - | sim | criado | `400`, `403` | admin only | OpenAPI |
+| PATCH | `/api/v1/admin/monsters/{id}` | Admin | `id` | sim | atualizado | `400`, `403`, `404` | admin only | OpenAPI |
+| DELETE | `/api/v1/admin/monsters/{id}` | Admin | `id` | - | removido | `403`, `404` | admin only | OpenAPI |
+| GET | `/api/v1/admin/bounties` | Admin | query | - | lista | `403` | admin/catalogo | OpenAPI |
+| POST | `/api/v1/admin/bounties` | Admin | - | sim | criado | `400`, `403` | admin only | OpenAPI |
+| PATCH | `/api/v1/admin/bounties/{id}` | Admin | `id` | sim | atualizado | `400`, `403`, `404` | admin only | OpenAPI |
+| DELETE | `/api/v1/admin/bounties/{id}` | Admin | `id` | - | removido | `403`, `404` | admin only | OpenAPI |
+| GET | `/api/v1/admin/missions` | Admin | query | - | lista | `403` | admin/catalogo | OpenAPI |
+| POST | `/api/v1/admin/missions` | Admin | - | sim | criado | `400`, `403` | admin only | OpenAPI |
+| PATCH | `/api/v1/admin/missions/{id}` | Admin | `id` | sim | atualizado | `400`, `403`, `404` | admin only | OpenAPI |
+| DELETE | `/api/v1/admin/missions/{id}` | Admin | `id` | - | removido | `403`, `404` | admin only | OpenAPI |
+| GET | `/api/v1/admin/trainings` | Admin | query | - | lista | `403` | admin/catalogo | OpenAPI |
+| POST | `/api/v1/admin/trainings` | Admin | - | sim | criado | `400`, `403` | admin only | OpenAPI |
+| PATCH | `/api/v1/admin/trainings/{id}` | Admin | `id` | sim | atualizado | `400`, `403`, `404` | admin only | OpenAPI |
+| DELETE | `/api/v1/admin/trainings/{id}` | Admin | `id` | - | removido | `403`, `404` | admin only | OpenAPI |
+| GET | `/api/v1/admin/npcs` | Admin | query | - | lista | `403` | admin/catalogo | OpenAPI |
+| POST | `/api/v1/admin/npcs` | Admin | - | sim | criado | `400`, `403` | admin only | OpenAPI |
+| PATCH | `/api/v1/admin/npcs/{id}` | Admin | `id` | sim | atualizado | `400`, `403`, `404` | admin only | OpenAPI |
+| DELETE | `/api/v1/admin/npcs/{id}` | Admin | `id` | - | removido | `403`, `404` | admin only | OpenAPI |
+| GET | `/api/v1/admin/shop-products` | Admin | query | - | lista | `403` | admin/catalogo | OpenAPI |
+| POST | `/api/v1/admin/shop-products` | Admin | - | sim | criado | `400`, `403` | admin only | OpenAPI |
+| PATCH | `/api/v1/admin/shop-products/{id}` | Admin | `id` | sim | atualizado | `400`, `403`, `404` | admin only | OpenAPI |
+| DELETE | `/api/v1/admin/shop-products/{id}` | Admin | `id` | - | removido | `403`, `404` | admin only | OpenAPI |
+
 ## Autenticacao
 
 ### POST `/api/v1/auth/register`
@@ -568,7 +804,30 @@ Resposta `200`:
     "analytics": {
       "eventsByKey": [{ "eventKey": "campaign_joined", "count": 4 }],
       "latestEvents": []
-    }
+    },
+    "dossierSubmissions": [
+      {
+        "id": "character-id",
+        "characterId": "character-id",
+        "tableId": "table-id",
+        "userId": "user-id",
+        "user": {
+          "id": "user-id",
+          "name": "Jogador",
+          "email": "jogador@example.com"
+        },
+        "character": {
+          "id": "character-id",
+          "name": "Ayla"
+        },
+        "creativeDossier": {
+          "hook": "Juramento antigo"
+        },
+        "sheetStatus": "SUBMITTED",
+        "submittedAt": "2026-08-05T12:00:00.000Z"
+      }
+    ],
+    "characterSubmissions": []
   }
 }
 ```
@@ -577,7 +836,7 @@ Erros relevantes: `403 FORBIDDEN`, `404 PUBLIC_CAMPAIGN_NOT_FOUND`.
 
 Publico admin: agregados operacionais e eventos tecnicos.
 
-Secreto: respostas narrativas, prompts integrais, ficha completa, conteudo de Mestre.
+Secreto: respostas narrativas, prompts integrais, ficha completa, conteudo de Mestre. `dossierSubmissions` e `characterSubmissions` sao dados administrativos e nao devem ser expostos para jogadores.
 
 ## Personagem na mesa
 
@@ -606,6 +865,10 @@ Body exemplo:
   "trainings": ["combat", "defense", "survival"],
   "positiveTrait": "Esperanca de Bravantus",
   "negativeTrait": "Medo da Ascensao",
+  "creativeDossier": {
+    "hook": "Juramento ao Salao",
+    "conflict": "Medo da Ascensao"
+  },
   "bond": "Juramento ao Salao",
   "equipment": [
     {
@@ -627,6 +890,10 @@ Resposta `201`:
     "tableId": "table-id",
     "userId": "user-id",
     "name": "Ayla",
+    "creativeDossier": {
+      "hook": "Juramento ao Salao",
+      "conflict": "Medo da Ascensao"
+    },
     "sheetStatus": "DRAFT",
     "derivedResources": {
       "hp": 18,
