@@ -1,7 +1,7 @@
 import prisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { TableService } from "../tables/table.service";
-import { AiClient } from "./ai.client";
+import { AiGateway } from "./ai.gateway";
 import {
   missionIdeasOutputSchema,
   timelineSummaryOutputSchema,
@@ -37,7 +37,11 @@ export class AiService {
   ): Promise<WorldSummarySuggestion> {
     await TableService.ensureMaster(userId, tableId);
 
-    return AiClient.generateStructured<WorldSummarySuggestion>({
+    const result = await AiGateway.generateStructured<WorldSummarySuggestion>({
+      useCase: "WORLD_SUMMARY",
+      userId,
+      tableId,
+      promptVersion: "world-summary-v1",
       schemaName: "world_summary_suggestion",
       schema: worldSummaryOutputSchema,
       maxOutputTokens: 700,
@@ -47,6 +51,7 @@ export class AiService {
         `Mundo atual: ${contextJson(input.currentWorld ?? {})}`,
       ].join("\n"),
     });
+    return result.data;
   }
 
   static async suggestMissionIdeas(
@@ -56,7 +61,11 @@ export class AiService {
   ): Promise<MissionIdeasSuggestion> {
     await TableService.ensureMaster(userId, tableId);
 
-    return AiClient.generateStructured<MissionIdeasSuggestion>({
+    const result = await AiGateway.generateStructured<MissionIdeasSuggestion>({
+      useCase: "MISSION_IDEAS",
+      userId,
+      tableId,
+      promptVersion: "mission-ideas-v1",
       schemaName: "mission_ideas",
       schema: missionIdeasOutputSchema,
       maxOutputTokens: 900,
@@ -69,6 +78,7 @@ export class AiService {
         characters: input.characters,
       }),
     });
+    return result.data;
   }
 
   static async suggestTraits(
@@ -132,7 +142,12 @@ export class AiService {
       );
     }
 
-    return AiClient.generateStructured<TraitSuggestions>({
+    const result = await AiGateway.generateStructured<TraitSuggestions>({
+      useCase: "TRAIT_SUGGESTIONS",
+      userId,
+      tableId,
+      characterId: input.characterId,
+      promptVersion: "trait-suggestions-v1",
       schemaName: "character_trait_suggestions",
       schema: traitSuggestionsOutputSchema,
       maxOutputTokens: 900,
@@ -149,6 +164,7 @@ export class AiService {
         existingTraits: character.traits,
       }),
     });
+    return result.data;
   }
 
   static async suggestTimelineSummary(
@@ -158,7 +174,11 @@ export class AiService {
   ): Promise<TimelineSummarySuggestion> {
     await TableService.ensureMaster(userId, tableId);
 
-    return AiClient.generateStructured<TimelineSummarySuggestion>({
+    const result = await AiGateway.generateStructured<TimelineSummarySuggestion>({
+      useCase: "TIMELINE_SUMMARY",
+      userId,
+      tableId,
+      promptVersion: "timeline-summary-v1",
       schemaName: "timeline_summary_suggestion",
       schema: timelineSummaryOutputSchema,
       maxOutputTokens: 450,
@@ -168,5 +188,6 @@ export class AiService {
         notes: input.notes,
       }),
     });
+    return result.data;
   }
 }

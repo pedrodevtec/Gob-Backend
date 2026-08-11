@@ -214,6 +214,34 @@ enum PlayerAiSuggestionStatus {
   DISCARDED
 }
 
+enum AiUseCase {
+  WORLD_SUMMARY
+  MISSION_IDEAS
+  TRAIT_SUGGESTIONS
+  TIMELINE_SUMMARY
+  PLAYER_CHARACTER_CREATION
+  PLAYER_CHARACTER_VALIDATION
+  CHARACTER_CHAPTER_SUGGESTION
+  CHARACTER_FIELD_REFINEMENT
+  CHARACTER_CARD_ART_PROMPT
+}
+
+enum AiUsageStatus {
+  SUCCESS
+  ERROR
+}
+
+enum AiPricingModality {
+  TEXT
+  IMAGE
+}
+
+enum AiCostSource {
+  CONFIGURED_PRICE
+  UNPRICED
+  USAGE_UNAVAILABLE
+}
+
 model User {
   id                      String                   @id @default(uuid())
   nome                    String
@@ -251,6 +279,7 @@ model User {
   updatedPublicCampaigns  PublicCampaign[]           @relation("PublicCampaignUpdater")
   participantConsents     ParticipantConsent[]        @relation("ParticipantConsentUser")
   playerAiSuggestions     PlayerAiSuggestion[]        @relation("PlayerAiSuggestionUser")
+  aiUsageEvents           AiUsageEvent[]              @relation("AiUsageEventUser")
   finalSurveyResponses    FinalSurveyResponse[]       @relation("FinalSurveyResponseUser")
   analyticsEvents         AnalyticsEvent[]            @relation("AnalyticsEventUser")
 }
@@ -333,6 +362,7 @@ model ContextVersion {
   units      ContextUnit[]
   tables     Table[]
   characterSubmissionSnapshots CharacterSubmissionSnapshot[]
+  playerAiSuggestions PlayerAiSuggestion[]
 
   @@unique([settingId, episodeId, layer, version])
   @@index([settingId, episodeId, layer, status, version])
@@ -435,6 +465,7 @@ model Character {
   traits                  CharacterTrait[]
   traitSuggestions        CharacterTraitSuggestion[]
   playerAiSuggestions     PlayerAiSuggestion[]
+  aiUsageEvents           AiUsageEvent[]
   analyticsEvents         AnalyticsEvent[]
   tableMissionSubmissions TableMissionSubmission[]
   timelineEvents          TableTimelineEvent[]
@@ -833,6 +864,7 @@ model Table {
   timelineEvents   TableTimelineEvent[]
   publicCampaign   PublicCampaign?
   playerAiSuggestions PlayerAiSuggestion[]
+  aiUsageEvents        AiUsageEvent[]
   finalSurveyResponses FinalSurveyResponse[]
   analyticsEvents      AnalyticsEvent[]
 
@@ -893,12 +925,17 @@ model PlayerAiSuggestion {
   tableId              String
   characterId          String?
   useCase              String
+  targetField          String?
   builderConfigVersion String
   promptVersion        String
+  fingerprint          String?
+  contextVersionId     String?
+  aiUsageEventId       String?
   model                String?
   suggestion           Json
   status               PlayerAiSuggestionStatus @default(GENERATED)
   decisionPayload      Json?
+  appliedContentHash   String?
   decidedAt            DateTime?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
@@ -906,9 +943,71 @@ model PlayerAiSuggestion {
   user      User       @relation("PlayerAiSuggestionUser", fields: [userId], references: [id], onDelete: Cascade)
   table     Table      @relation(fields: [tableId], references: [id], onDelete: Cascade)
   character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  contextVersion ContextVersion? @relation(fields: [contextVersionId], references: [id], onDelete: SetNull)
+  aiUsageEvent AiUsageEvent? @relation("AiUsageEventSuggestionLink", fields: [aiUsageEventId], references: [id], onDelete: SetNull)
+  usageEvents AiUsageEvent[] @relation("AiUsageEventSuggestion")
 
   @@index([userId, tableId, status, createdAt])
   @@index([characterId, status, createdAt])
+  @@index([fingerprint, createdAt])
+}
+
+model AiUsageEvent {
+  id                String        @id @default(uuid())
+  requestId         String        @unique
+  userId            String?
+  tableId           String?
+  characterId       String?
+  suggestionId      String?
+  useCase           AiUseCase
+  provider          String
+  model             String
+  promptVersion     String
+  contextVersionId  String?
+  inputTokens       Int?
+  cachedInputTokens Int?
+  outputTokens      Int?
+  totalTokens       Int?
+  imageCount        Int?
+  latencyMs         Int
+  status            AiUsageStatus
+  errorCode         String?
+  pricingVersion    String?
+  costMicrosUsd     BigInt?
+  costSource        AiCostSource
+  createdAt         DateTime      @default(now())
+
+  user      User?       @relation("AiUsageEventUser", fields: [userId], references: [id], onDelete: SetNull)
+  table     Table?      @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  character Character?  @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  suggestion PlayerAiSuggestion? @relation("AiUsageEventSuggestion", fields: [suggestionId], references: [id], onDelete: SetNull)
+  linkedSuggestions PlayerAiSuggestion[] @relation("AiUsageEventSuggestionLink")
+
+  @@index([createdAt])
+  @@index([useCase, createdAt])
+  @@index([provider, model, createdAt])
+  @@index([status, createdAt])
+  @@index([tableId, createdAt])
+  @@index([characterId, createdAt])
+  @@index([suggestionId])
+}
+
+model AiPricing {
+  id                         String            @id @default(uuid())
+  provider                   String
+  model                      String
+  modality                   AiPricingModality
+  inputMicrosUsdPerMillion   BigInt?
+  cachedInputMicrosUsdPerMillion BigInt?
+  outputMicrosUsdPerMillion  BigInt?
+  imageMicrosUsd             BigInt?
+  currency                   String            @default("USD")
+  effectiveFrom              DateTime
+  version                    String
+  createdAt                  DateTime          @default(now())
+
+  @@unique([provider, model, modality, version])
+  @@index([provider, model, modality, effectiveFrom])
 }
 
 model FinalSurveyResponse {

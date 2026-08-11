@@ -12,10 +12,30 @@ interface OpenAIResponse {
   status?: string;
   incomplete_details?: { reason?: string } | null;
   error?: { code?: string; message?: string } | null;
+  usage?: {
+    input_tokens?: number;
+    input_tokens_details?: { cached_tokens?: number };
+    output_tokens?: number;
+    total_tokens?: number;
+  };
   output?: Array<{
     type?: string;
     content?: OpenAIOutputContent[];
   }>;
+}
+
+export interface AiProviderUsage {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
+export interface AiProviderStructuredResult<T> {
+  data: T;
+  provider: "openai";
+  model: string;
+  usage?: AiProviderUsage;
 }
 
 export class AiClient {
@@ -26,6 +46,17 @@ export class AiClient {
     prompt: string;
     maxOutputTokens: number;
   }): Promise<T> {
+    const result = await this.generateStructuredWithUsage<T>(input);
+    return result.data;
+  }
+
+  static async generateStructuredWithUsage<T>(input: {
+    schemaName: string;
+    schema: JsonSchema;
+    instructions: string;
+    prompt: string;
+    maxOutputTokens: number;
+  }): Promise<AiProviderStructuredResult<T>> {
     if (!env.AI_API_KEY) {
       throw new AppError(503, "AI assistant is not configured.", "AI_NOT_CONFIGURED");
     }
@@ -99,7 +130,17 @@ export class AiClient {
       }
 
       try {
-        return JSON.parse(content.text) as T;
+        return {
+          data: JSON.parse(content.text) as T,
+          provider: "openai",
+          model: env.AI_MODEL,
+          usage: {
+            inputTokens: payload.usage?.input_tokens,
+            cachedInputTokens: payload.usage?.input_tokens_details?.cached_tokens,
+            outputTokens: payload.usage?.output_tokens,
+            totalTokens: payload.usage?.total_tokens,
+          },
+        };
       } catch {
         throw new AppError(
           502,
