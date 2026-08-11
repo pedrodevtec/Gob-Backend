@@ -4,6 +4,10 @@ import { validate } from "../../middleware/validate";
 import aiRoutes from "../ai/ai.routes";
 import playerAiRoutes from "../ai/playerAi.routes";
 import {
+  decideCharacterAiSuggestion,
+  suggestCharacterChapter,
+} from "../ai/playerAi.controller";
+import {
   approveTableCharacter,
   applyCharacterTraitSuggestion,
   createCharacterTrait,
@@ -75,6 +79,11 @@ import {
   validateUpsertCharacterEpisodeAnswers,
   validateUpsertTableWorld,
 } from "./table.schema";
+import {
+  validateCharacterChapterSuggestions,
+  validateDecidePlayerAiSuggestion,
+} from "../ai/playerAi.schema";
+import { previewCharacterCardArtPrompt } from "../cards/characterCardArt.controller";
 
 const router = Router();
 
@@ -116,6 +125,20 @@ router.patch(
   upsertTableCharacterEpisodeAnswers
 );
 router.post("/:tableId/characters/:characterId/submit", submitTableCharacter);
+router.post(
+  "/:tableId/characters/:characterId/ai/chapter-suggestions",
+  validate(validateCharacterChapterSuggestions),
+  suggestCharacterChapter
+);
+router.patch(
+  "/:tableId/characters/:characterId/ai/suggestions/:suggestionId",
+  validate(validateDecidePlayerAiSuggestion),
+  decideCharacterAiSuggestion
+);
+router.post(
+  "/:tableId/characters/:characterId/card-art-prompt/preview",
+  previewCharacterCardArtPrompt
+);
 router.get("/:tableId/characters/:characterId/reviews", listTableCharacterReviewEvents);
 router.post(
   "/:tableId/characters/:characterId/request-changes",

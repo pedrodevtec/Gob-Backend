@@ -18,3 +18,19 @@ export const decidePlayerAiSuggestion = asyncHandler(async (req: Request, res: R
   const suggestion = await PlayerAiService.decideSuggestion(userId, tableId, suggestionId, req.body);
   sendSuccess(res, 200, { suggestion }, "Decisao de sugestao registrada com sucesso.");
 });
+
+export const suggestCharacterChapter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const result = await PlayerAiService.suggestCharacterChapter(userId, tableId, characterId, req.body);
+  sendSuccess(res, 200, result as unknown as Record<string, unknown>);
+});
+
+export const decideCharacterAiSuggestion = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const suggestionId = requireString(req.params.suggestionId, "suggestionId");
+  const suggestion = await PlayerAiService.decideSuggestion(userId, tableId, suggestionId, req.body);
+  sendSuccess(res, 200, { suggestion }, "Decisao de sugestao registrada com sucesso.");
+});

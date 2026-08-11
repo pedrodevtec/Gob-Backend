@@ -4,16 +4,22 @@ import {
   Prisma,
   TableMemberRole,
 } from "@prisma/client";
+import crypto from "crypto";
 import prisma from "../../config/db";
 import { env } from "../../config/env";
 import { AppError } from "../../errors/AppError";
 import { BuilderService } from "../builder/builder.service";
 import { CampaignPilotService } from "../campaigns/campaignPilot.service";
 import { TableService } from "../tables/table.service";
-import { AiClient } from "./ai.client";
 import { AiContextService } from "./ai.context.service";
-import { playerCharacterAssistantOutputSchema } from "./ai.schemas";
+import { AiGateway } from "./ai.gateway";
 import {
+  characterChapterSuggestionsOutputSchema,
+  playerCharacterAssistantOutputSchema,
+} from "./ai.schemas";
+import {
+  CharacterChapterSuggestionInput,
+  CharacterChapterSuggestionOutput,
   DecidePlayerAiSuggestionInput,
   PlayerCharacterAssistantInput,
   PlayerCharacterAssistantOutput,
@@ -28,6 +34,27 @@ const PLAYER_ASSISTANT_INSTRUCTIONS = [
   "Nao invente segredo, spoiler, passado obrigatorio ou informacao oculta.",
   "Cada sugestao deve orientar o jogador a aceitar, editar ou descartar.",
 ].join(" ");
+
+const CHARACTER_CHAPTER_PROMPT_VERSION = "character-chapter-v1";
+const MAX_CHAPTER_SUGGESTIONS = 3;
+
+const CHAPTER_ASSISTANT_INSTRUCTIONS = [
+  "Voce auxilia um jogador no Character Builder de Guardian of Bravantus.",
+  "A IA sugere. O Mestre decide. O jogador personaliza. A plataforma registra.",
+  "Responda em portugues do Brasil.",
+  "Sugira conteudo apenas para os campos solicitados.",
+  "Nao altere ficha, nao canonize fatos e nao revele ou invente segredos.",
+  "Rationale deve ser curta e citar somente tipos de informacao autorizada.",
+  "basedOn deve conter apenas nomes de campos, nunca conteudo.",
+].join(" ");
+
+const FORBIDDEN_RESPONSE_MARKERS = [
+  "gm_secret",
+  "SECRET_CANON",
+  "TABLE_MASTER",
+  "AUTHOR_ADMIN",
+  "Zurich",
+];
 
 export class PlayerAiService {
   static async suggestCharacterHelp(
@@ -44,7 +71,13 @@ export class PlayerAiService {
 
     let output: PlayerCharacterAssistantOutput;
     try {
-      output = await AiClient.generateStructured<PlayerCharacterAssistantOutput>({
+      const result = await AiGateway.generateStructured<PlayerCharacterAssistantOutput>({
+        useCase: input.useCase,
+        userId,
+        tableId,
+        characterId: input.characterId,
+        contextVersionId: context.contextVersion.id,
+        promptVersion: "player-character-assistant-v1",
         schemaName: "player_character_assistant",
         schema: playerCharacterAssistantOutputSchema,
         maxOutputTokens: 900,
@@ -55,6 +88,7 @@ export class PlayerAiService {
           context,
         }),
       });
+      output = result.data;
     } catch (error) {
       await CampaignPilotService.recordAnalyticsEvent({
         userId,
@@ -112,6 +146,116 @@ export class PlayerAiService {
     };
   }
 
+  static async suggestCharacterChapter(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    input: CharacterChapterSuggestionInput
+  ): Promise<CharacterChapterSuggestionOutput> {
+    const authorized = await AiContextService.buildAuthorizedCharacterBuilderContext({
+      authenticatedUserId: userId,
+      tableId,
+      characterId,
+      targetChapter: input.targetChapter,
+      targetFields: input.targetFields,
+      expectedRevision: input.expectedRevision,
+      playerIntent: input.playerIntent,
+    });
+
+    const fingerprint = this.buildSuggestionFingerprint({
+      characterId,
+      sheetRevision: authorized.characterRevision,
+      targetChapter: input.targetChapter,
+      targetFields: authorized.targetFields,
+      promptVersion: CHARACTER_CHAPTER_PROMPT_VERSION,
+      contextHash: authorized.contextHash,
+      playerIntent: input.playerIntent,
+    });
+
+    const cached = await prisma.playerAiSuggestion.findMany({
+      where: {
+        userId,
+        tableId,
+        characterId,
+        useCase: { in: ["CHARACTER_CHAPTER_SUGGESTION", "CHARACTER_FIELD_REFINEMENT"] },
+        fingerprint,
+        status: PlayerAiSuggestionStatus.GENERATED,
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    if (cached.length) {
+      return {
+        suggestions: cached.slice(0, MAX_CHAPTER_SUGGESTIONS).map((record) =>
+          this.formatChapterSuggestion(record)
+        ),
+        characterRevision: authorized.characterRevision,
+        promptVersion: CHARACTER_CHAPTER_PROMPT_VERSION,
+        cached: true,
+      };
+    }
+
+    const result = await AiGateway.generateStructured<{ suggestions: Array<{
+      targetField: string;
+      content: string;
+      rationale: string;
+      basedOn: string[];
+    }> }>({
+      useCase: "CHARACTER_CHAPTER_SUGGESTION",
+      userId,
+      tableId,
+      characterId,
+      contextVersionId: authorized.contextVersionId,
+      promptVersion: CHARACTER_CHAPTER_PROMPT_VERSION,
+      schemaName: "character_chapter_suggestions",
+      schema: characterChapterSuggestionsOutputSchema,
+      maxOutputTokens: 900,
+      instructions: CHAPTER_ASSISTANT_INSTRUCTIONS,
+      prompt: JSON.stringify({
+        targetChapter: input.targetChapter,
+        targetFields: authorized.targetFields,
+        playerIntent: input.playerIntent ?? null,
+        authorizedContext: authorized.context,
+      }),
+    });
+
+    const records: PlayerAiSuggestion[] = [];
+    for (const suggestion of result.data.suggestions.slice(0, MAX_CHAPTER_SUGGESTIONS)) {
+      if (!authorized.targetFields.includes(suggestion.targetField)) {
+        continue;
+      }
+      const sanitized = this.sanitizeChapterSuggestion(suggestion, authorized.targetFields);
+      const useCase = this.hasExistingFieldContent(authorized.context.character.fields, sanitized.targetField)
+        ? "CHARACTER_FIELD_REFINEMENT"
+        : "CHARACTER_CHAPTER_SUGGESTION";
+      records.push(
+        await prisma.playerAiSuggestion.create({
+          data: {
+            userId,
+            tableId,
+            characterId,
+            useCase,
+            targetField: sanitized.targetField,
+            builderConfigVersion: BuilderService.getActiveConfig().version,
+            promptVersion: CHARACTER_CHAPTER_PROMPT_VERSION,
+            fingerprint,
+            contextVersionId: authorized.contextVersionId,
+            aiUsageEventId: result.usageEventId ?? null,
+            model: result.model,
+            suggestion: sanitized as unknown as Prisma.InputJsonValue,
+          },
+        })
+      );
+    }
+
+    return {
+      suggestions: records.map((record) => this.formatChapterSuggestion(record)),
+      characterRevision: authorized.characterRevision,
+      promptVersion: CHARACTER_CHAPTER_PROMPT_VERSION,
+      cached: false,
+    };
+  }
+
   static async decideSuggestion(
     userId: string,
     tableId: string,
@@ -134,8 +278,26 @@ export class PlayerAiService {
     if (!suggestion) {
       throw new AppError(404, "Sugestao de IA nao encontrada.", "PLAYER_AI_SUGGESTION_NOT_FOUND");
     }
+    if (suggestion.characterId) {
+      const character = await prisma.character.findFirst({
+        where: { id: suggestion.characterId, tableId, userId },
+        select: { id: true },
+      });
+      if (!character) {
+        throw new AppError(404, "Sugestao de IA nao encontrada.", "PLAYER_AI_SUGGESTION_NOT_FOUND");
+      }
+    }
+
     if (suggestion.status !== PlayerAiSuggestionStatus.GENERATED) {
-      throw new AppError(409, "Sugestao de IA ja foi decidida.", "PLAYER_AI_SUGGESTION_ALREADY_DECIDED");
+      if (suggestion.status === input.decision) {
+        return suggestion;
+      }
+      throw new AppError(409, "Sugestao de IA ja foi decidida com outro estado.", "PLAYER_AI_SUGGESTION_ALREADY_DECIDED");
+    }
+
+    const appliedContent = input.appliedContent ?? input.editedSuggestion;
+    if (input.decision === "EDITED" && !appliedContent) {
+      throw new AppError(400, "appliedContent e obrigatorio para decisao EDITED.", "EDITED_SUGGESTION_REQUIRED");
     }
 
     const updated = await prisma.playerAiSuggestion.update({
@@ -144,8 +306,10 @@ export class PlayerAiService {
         status: input.decision,
         decisionPayload: {
           decision: input.decision,
-          editedSuggestion: input.editedSuggestion ?? null,
+          appliedContentProvided: Boolean(appliedContent),
+          appliedContentLength: appliedContent?.length ?? null,
         },
+        appliedContentHash: appliedContent ? this.hashText(appliedContent) : null,
         decidedAt: new Date(),
       },
     });
@@ -164,5 +328,72 @@ export class PlayerAiService {
     });
 
     return updated;
+  }
+
+  private static buildSuggestionFingerprint(input: {
+    characterId: string;
+    sheetRevision: number;
+    targetChapter: string;
+    targetFields: string[];
+    promptVersion: string;
+    contextHash: string;
+    playerIntent?: string;
+  }): string {
+    return this.hashText(JSON.stringify({
+      characterId: input.characterId,
+      sheetRevision: input.sheetRevision,
+      targetChapter: input.targetChapter,
+      targetFields: [...input.targetFields].sort(),
+      promptVersion: input.promptVersion,
+      contextHash: input.contextHash,
+      playerIntent: input.playerIntent?.trim().replace(/\s+/g, " ").toLowerCase() ?? null,
+    }));
+  }
+
+  private static sanitizeChapterSuggestion(
+    suggestion: { targetField: string; content: string; rationale: string; basedOn: string[] },
+    allowedFields: string[]
+  ) {
+    const value = {
+      targetField: suggestion.targetField,
+      content: suggestion.content.trim(),
+      rationale: suggestion.rationale.trim().slice(0, 500),
+      basedOn: suggestion.basedOn
+        .map((entry) => entry.trim())
+        .filter((entry) => allowedFields.includes(entry) || /^[a-zA-Z][a-zA-Z0-9_.-]{0,79}$/.test(entry))
+        .slice(0, 5),
+      status: "GENERATED" as const,
+    };
+    const serialized = JSON.stringify(value);
+    for (const marker of FORBIDDEN_RESPONSE_MARKERS) {
+      if (serialized.toLowerCase().includes(marker.toLowerCase())) {
+        throw new AppError(502, "Resposta da IA bloqueada por conter dado protegido.", "AI_RESPONSE_SECRET_LEAK_BLOCKED");
+      }
+    }
+    return value;
+  }
+
+  private static formatChapterSuggestion(record: PlayerAiSuggestion) {
+    const suggestion = record.suggestion as Prisma.JsonObject;
+    return {
+      id: record.id,
+      targetField: String(suggestion.targetField ?? record.targetField ?? ""),
+      content: String(suggestion.content ?? suggestion.suggestion ?? ""),
+      rationale: String(suggestion.rationale ?? ""),
+      basedOn: Array.isArray(suggestion.basedOn) ? suggestion.basedOn.map(String) : [],
+      status: "GENERATED" as const,
+    };
+  }
+
+  private static hasExistingFieldContent(fields: Record<string, unknown>, targetField: string): boolean {
+    const value = fields[targetField];
+    if (typeof value === "string") {
+      return value.trim().length > 0;
+    }
+    return value !== null && value !== undefined;
+  }
+
+  private static hashText(value: string): string {
+    return crypto.createHash("sha256").update(value).digest("hex");
   }
 }

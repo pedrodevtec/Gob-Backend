@@ -91,4 +91,28 @@ export interface PlayerCharacterAssistantOutput {
 export interface DecidePlayerAiSuggestionInput {
   decision: "ACCEPTED" | "EDITED" | "DISCARDED";
   editedSuggestion?: string;
+  appliedContent?: string;
+}
+
+export interface CharacterChapterSuggestionInput {
+  targetChapter: "STORY";
+  targetFields: string[];
+  expectedRevision: number;
+  playerIntent?: string;
+}
+
+export interface CharacterChapterSuggestion {
+  id?: string;
+  targetField: string;
+  content: string;
+  rationale: string;
+  basedOn: string[];
+  status: "GENERATED";
+}
+
+export interface CharacterChapterSuggestionOutput {
+  suggestions: CharacterChapterSuggestion[];
+  characterRevision: number;
+  promptVersion: string;
+  cached: boolean;
 }

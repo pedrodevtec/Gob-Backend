@@ -116,3 +116,33 @@ export const playerCharacterAssistantOutputSchema: JsonSchema = {
   required: ["suggestions", "warnings"],
   additionalProperties: false,
 };
+
+const characterChapterSuggestionSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    targetField: conciseString,
+    content: conciseString,
+    rationale: conciseString,
+    basedOn: {
+      type: "array",
+      maxItems: 5,
+      items: conciseString,
+    },
+  },
+  required: ["targetField", "content", "rationale", "basedOn"],
+  additionalProperties: false,
+};
+
+export const characterChapterSuggestionsOutputSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    suggestions: {
+      type: "array",
+      minItems: 1,
+      maxItems: 3,
+      items: characterChapterSuggestionSchema,
+    },
+  },
+  required: ["suggestions"],
+  additionalProperties: false,
+};
