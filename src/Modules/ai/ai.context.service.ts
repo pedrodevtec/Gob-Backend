@@ -6,8 +6,10 @@ import {
   TableMemberRole,
   TableMemberStatus,
 } from "@prisma/client";
+import crypto from "crypto";
 import defaultPrisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
+import { BuilderService } from "../builder/builder.service";
 
 export type PlayerAiContextUseCase =
   | "PLAYER_CHARACTER_CREATION"
@@ -21,6 +23,16 @@ export interface BuildPlayerAiContextInput {
   maxContextUnits?: number;
 }
 
+export interface BuildAuthorizedCharacterBuilderContextInput {
+  authenticatedUserId: string;
+  tableId: string;
+  characterId: string;
+  targetChapter: string;
+  targetFields: string[];
+  expectedRevision: number;
+  playerIntent?: string;
+}
+
 const PLAYER_AI_VISIBILITIES: ContextVisibility[] = [
   ContextVisibility.PUBLIC,
   ContextVisibility.AUTHENTICATED_TABLE_PLAYER,
@@ -32,6 +44,33 @@ const FORBIDDEN_CONTEXT_MARKERS = [
   "TABLE_MASTER",
   "AUTHOR_ADMIN",
 ];
+
+const EDITABLE_CHARACTER_STATUSES = new Set<CharacterSheetStatus>([
+  CharacterSheetStatus.DRAFT,
+  CharacterSheetStatus.CHANGES_REQUESTED,
+]);
+
+const ALLOWED_CHARACTER_AI_FIELDS = new Set([
+  "name",
+  "concept",
+  "origin",
+  "appearance",
+  "desire",
+  "fear",
+  "promiseOrGuilt",
+  "reasonToActWithGroup",
+  "markLocation",
+  "markAppearance",
+  "markReaction",
+  "markAttitude",
+  "narrativeBond",
+  "personalHistory",
+  "positiveTrait",
+  "negativeTrait",
+  "initialEquipment",
+]);
+
+const MECHANICAL_FIELDS = new Set(["attributes", "trainings", "archetypeKey"]);
 
 type AiContextDb = typeof defaultPrisma;
 
@@ -247,6 +286,216 @@ export class AiContextService {
 
     this.assertSecretSafe(context);
     return context;
+  }
+
+  static async buildAuthorizedCharacterBuilderContext(
+    input: BuildAuthorizedCharacterBuilderContextInput
+  ) {
+    if (input.targetChapter !== "STORY") {
+      throw new AppError(400, "Capitulo de sugestao nao suportado.", "INVALID_AI_TARGET_CHAPTER");
+    }
+
+    const normalizedFields = [...new Set(input.targetFields.map((field) => field.trim()))];
+    if (!normalizedFields.length || normalizedFields.length > 3) {
+      throw new AppError(400, "targetFields deve conter de 1 a 3 campos.", "INVALID_AI_TARGET_FIELDS");
+    }
+    for (const field of normalizedFields) {
+      if (MECHANICAL_FIELDS.has(field) || !ALLOWED_CHARACTER_AI_FIELDS.has(field)) {
+        throw new AppError(400, "Campo nao permitido para sugestao contextual.", "INVALID_AI_TARGET_FIELD");
+      }
+    }
+
+    const membership = await this.db.tableMember.findFirst({
+      where: {
+        tableId: input.tableId,
+        userId: input.authenticatedUserId,
+        status: TableMemberStatus.ACTIVE,
+        role: TableMemberRole.PLAYER,
+      },
+      select: { role: true },
+    });
+    if (!membership) {
+      throw new AppError(403, "Sugestao restrita ao PLAYER ativo dono do personagem.", "TABLE_PLAYER_REQUIRED");
+    }
+
+    const table = await this.db.table.findUnique({
+      where: { id: input.tableId },
+      select: {
+        id: true,
+        name: true,
+        settingId: true,
+        episodeId: true,
+        contextVersionId: true,
+        contextVersion: {
+          select: {
+            id: true,
+            settingId: true,
+            episodeId: true,
+            version: true,
+            layer: true,
+            status: true,
+            units: {
+              where: {
+                visibility: { in: PLAYER_AI_VISIBILITIES },
+                classification: { not: ContextClassification.SECRET_CANON },
+              },
+              orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+              select: {
+                id: true,
+                classification: true,
+                visibility: true,
+                title: true,
+                content: true,
+                sortOrder: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (
+      !table ||
+      table.contextVersion.status !== ContextVersionStatus.PUBLISHED ||
+      table.contextVersion.id !== table.contextVersionId ||
+      table.contextVersion.settingId !== table.settingId ||
+      table.contextVersion.episodeId !== table.episodeId
+    ) {
+      throw new AppError(404, "Contexto autorizado da mesa nao encontrado.", "AI_CONTEXT_NOT_FOUND");
+    }
+
+    const character = await this.db.character.findFirst({
+      where: {
+        id: input.characterId,
+        tableId: input.tableId,
+        userId: input.authenticatedUserId,
+      },
+      select: {
+        id: true,
+        tableId: true,
+        userId: true,
+        name: true,
+        concept: true,
+        origin: true,
+        appearance: true,
+        desire: true,
+        fear: true,
+        promiseOrGuilt: true,
+        reasonToActWithGroup: true,
+        markLocation: true,
+        markAppearance: true,
+        markReaction: true,
+        markAttitude: true,
+        archetypeKey: true,
+        positiveTrait: true,
+        negativeTrait: true,
+        narrativeBond: true,
+        personalHistory: true,
+        initialEquipment: true,
+        sheetStatus: true,
+        sheetRevision: true,
+        episodeAnswers: {
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { questionKey: true, promptSnapshot: true, answer: true },
+        },
+      },
+    });
+
+    if (!character) {
+      throw new AppError(404, "Personagem nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
+    }
+    if (!EDITABLE_CHARACTER_STATUSES.has(character.sheetStatus)) {
+      throw new AppError(409, "Personagem nao pode solicitar preenchimento neste estado.", "CHARACTER_NOT_EDITABLE");
+    }
+    if (character.sheetRevision !== input.expectedRevision) {
+      throw new AppError(409, "Revisao esperada nao corresponde ao rascunho atual.", "STALE_CHARACTER_REVISION");
+    }
+
+    const builderConfig = BuilderService.getActiveConfig();
+    const context = {
+      targetChapter: input.targetChapter,
+      targetFields: normalizedFields,
+      playerIntent: input.playerIntent ?? null,
+      table: { id: table.id, name: table.name },
+      contextVersion: {
+        id: table.contextVersion.id,
+        version: table.contextVersion.version,
+        layer: table.contextVersion.layer,
+      },
+      publicContext: table.contextVersion.units.map((unit) => ({
+        id: unit.id,
+        title: unit.title,
+        classification: unit.classification,
+        visibility: unit.visibility,
+        content: unit.content,
+      })),
+      builder: {
+        version: builderConfig.version,
+        aiBoundaries: builderConfig.aiBoundaries,
+        fieldRules: this.pickFieldRules(normalizedFields),
+      },
+      character: {
+        id: character.id,
+        sheetStatus: character.sheetStatus,
+        sheetRevision: character.sheetRevision,
+        fields: this.pickCharacterFields(character),
+        episodeAnswers: character.episodeAnswers.map((answer) => ({
+          questionKey: answer.questionKey,
+          promptSnapshot: answer.promptSnapshot,
+          answer: answer.answer,
+        })),
+      },
+      sourceRefs: [
+        ...table.contextVersion.units.map((unit) => ({
+          type: "CONTEXT_UNIT" as const,
+          id: unit.id,
+          contextVersionId: table.contextVersion.id,
+        })),
+        { type: "CHARACTER" as const, id: character.id, revision: character.sheetRevision },
+        ...character.episodeAnswers.map((answer) => ({
+          type: "EPISODE_ANSWER" as const,
+          questionKey: answer.questionKey,
+        })),
+      ],
+    };
+
+    this.assertSecretSafe(context);
+    return {
+      context,
+      targetFields: normalizedFields,
+      characterRevision: character.sheetRevision,
+      contextVersionId: table.contextVersion.id,
+      contextHash: this.hashAuthorizedContext(context),
+    };
+  }
+
+  private static pickFieldRules(targetFields: string[]) {
+    const config = BuilderService.getActiveConfig();
+    const rules: Record<string, unknown> = {};
+    for (const field of targetFields) {
+      if (["positiveTrait", "negativeTrait", "narrativeBond"].includes(field)) {
+        rules[field] = config.traitsAndBond;
+      } else if (field === "initialEquipment") {
+        rules[field] = config.equipment;
+      } else if (field.startsWith("mark")) {
+        rules[field] = config.aiBoundaries;
+      } else {
+        rules[field] = "Campo narrativo textual. Sugira redacao curta sem declarar canon secreto.";
+      }
+    }
+    return rules;
+  }
+
+  private static pickCharacterFields(character: Record<string, unknown>) {
+    const fields: Record<string, unknown> = {};
+    for (const field of ALLOWED_CHARACTER_AI_FIELDS) {
+      fields[field] = character[field] ?? null;
+    }
+    fields.archetypeKey = character.archetypeKey ?? null;
+    return fields;
+  }
+
+  private static hashAuthorizedContext(value: unknown): string {
+    return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
   }
 
   private static assertSecretSafe(value: unknown): void {
