@@ -27,6 +27,9 @@ const characterInclude = {
   reviewEvents: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
   approvedBy: { select: { id: true, nome: true, email: true } },
   user: { select: { id: true, nome: true, email: true } },
+  table: { select: { contextVersionId: true } },
+  reviews: { orderBy: { updatedAt: "desc" }, take: 1 },
+  submissionSnapshots: { orderBy: [{ submittedAt: "desc" }, { id: "desc" }] },
 } satisfies Prisma.CharacterInclude;
 
 export class TableCharacterPackage03Service {
@@ -152,27 +155,40 @@ export class TableCharacterPackage03Service {
     }
 
     const now = new Date();
-    const character = await this.db.character.update({
-      where: { id: characterId },
-      data: {
-        sheetStatus: CharacterSheetStatus.SUBMITTED,
-        submittedAt: now,
-        submittedRevision: current.sheetRevision,
-      },
-      include: characterInclude,
-    });
+    const submittedRevision = current.sheetRevision;
+    const character = await this.db.$transaction(async (tx) => {
+      await tx.characterSubmissionSnapshot.create({
+        data: this.buildSubmissionSnapshotData(current, {
+          submittedById: userId,
+          submittedAt: now,
+          sheetRevision: submittedRevision,
+        }),
+      });
 
-    await this.db.characterReview.upsert({
-      where: { tableId_characterId: { tableId, characterId } },
-      create: {
-        tableId,
-        characterId,
-        status: CharacterReviewStatus.PENDING,
-      },
-      update: {
-        status: CharacterReviewStatus.PENDING,
-        masterFeedback: null,
-      },
+      const updated = await tx.character.update({
+        where: { id: characterId },
+        data: {
+          sheetStatus: CharacterSheetStatus.SUBMITTED,
+          submittedAt: now,
+          submittedRevision,
+        },
+        include: characterInclude,
+      });
+
+      await tx.characterReview.upsert({
+        where: { tableId_characterId: { tableId, characterId } },
+        create: {
+          tableId,
+          characterId,
+          status: CharacterReviewStatus.PENDING,
+        },
+        update: {
+          status: CharacterReviewStatus.PENDING,
+          masterFeedback: null,
+        },
+      });
+
+      return updated;
     });
 
     return this.formatCharacter(character);
@@ -304,6 +320,25 @@ export class TableCharacterPackage03Service {
           masterFeedback: input.reason ?? null,
         },
       });
+
+      if (input.action === CharacterReviewAction.APPROVED) {
+        const approvalDate = new Date();
+        const snapshotUpdate = await tx.characterSubmissionSnapshot.updateMany({
+          where: {
+            characterId: input.characterId,
+            sheetRevision: revision,
+            approvedAt: null,
+          },
+          data: {
+            approvedAt: approvalDate,
+            approvedById: input.userId,
+          },
+        });
+
+        if (snapshotUpdate.count !== 1) {
+          throw new AppError(409, "Snapshot da submissao nao encontrado ou ja aprovado.", "CHARACTER_SUBMISSION_SNAPSHOT_NOT_FOUND");
+        }
+      }
 
       return tx.character.findUniqueOrThrow({ where: { id: input.characterId }, include: characterInclude });
     });
@@ -519,7 +554,79 @@ export class TableCharacterPackage03Service {
     }
   }
 
+  private static buildSubmissionSnapshotData(
+    character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>,
+    input: { submittedById: string; submittedAt: Date; sheetRevision: number }
+  ): Prisma.CharacterSubmissionSnapshotUncheckedCreateInput {
+    if (!character.table?.contextVersionId) {
+      throw new AppError(409, "Personagem sem contexto de mesa para submissao.", "CHARACTER_CONTEXT_REQUIRED");
+    }
+
+    return {
+      characterId: character.id,
+      sheetRevision: input.sheetRevision,
+      submittedById: input.submittedById,
+      submittedAt: input.submittedAt,
+      builderConfigVersion: BuilderService.getActiveConfig().version,
+      contextVersionId: character.table.contextVersionId,
+      characterSnapshot: {
+        id: character.id,
+        tableId: character.tableId,
+        ownerUserId: character.userId,
+        name: character.name,
+        concept: character.concept,
+        origin: character.origin,
+        appearance: character.appearance,
+        desire: character.desire,
+        fear: character.fear,
+        promiseOrGuilt: character.promiseOrGuilt,
+        reasonToActWithGroup: character.reasonToActWithGroup,
+        markLocation: character.markLocation,
+        markAppearance: character.markAppearance,
+        markReaction: character.markReaction,
+        markAttitude: character.markAttitude,
+        archetypeKey: character.archetypeKey,
+        attributes: character.attributes,
+        trainings: character.trainings,
+        positiveTrait: character.positiveTrait,
+        negativeTrait: character.negativeTrait,
+        narrativeBond: character.narrativeBond,
+        personalHistory: character.personalHistory,
+        initialEquipment: character.initialEquipment,
+        creativeDossier: character.creativeDossier,
+        derivedResources: BuilderService.calculateDerivedResources(character.attributes),
+        sheetRevision: input.sheetRevision,
+      },
+      episodeAnswersSnapshot: character.episodeAnswers.map((answer) => ({
+        id: answer.id,
+        questionKey: answer.questionKey,
+        promptSnapshot: answer.promptSnapshot,
+        answer: answer.answer,
+        createdAt: answer.createdAt.toISOString(),
+        updatedAt: answer.updatedAt.toISOString(),
+      })),
+    };
+  }
+
+  private static buildNextAction(character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>) {
+    if (editableStatuses.has(character.sheetStatus)) {
+      return {
+        key: character.sheetStatus === CharacterSheetStatus.CHANGES_REQUESTED ? "UPDATE_CHARACTER" : "EDIT_CHARACTER",
+        title: character.sheetStatus === CharacterSheetStatus.CHANGES_REQUESTED ? "Ajustar personagem" : "Editar personagem",
+      };
+    }
+    if (character.sheetStatus === CharacterSheetStatus.SUBMITTED) {
+      return { key: "WAIT_APPROVAL", title: "Aguardar aprovacao" };
+    }
+    return { key: "VIEW_CHARACTER", title: "Ver personagem" };
+  }
+
   private static formatCharacter(character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>) {
+    const latestSubmission = character.submissionSnapshots[0] ?? null;
+    const approvedSubmission =
+      character.submissionSnapshots.find((snapshot) => snapshot.approvedAt !== null) ?? null;
+    const review = character.reviews[0] ?? null;
+
     return {
       id: character.id,
       tableId: character.tableId,
@@ -552,6 +659,29 @@ export class TableCharacterPackage03Service {
       submittedAt: character.submittedAt,
       approvedAt: character.approvedAt,
       approvedBy: character.approvedBy,
+      editable: editableStatuses.has(character.sheetStatus),
+      nextAction: this.buildNextAction(character),
+      masterFeedback: review?.masterFeedback ?? null,
+      latestSubmission: latestSubmission
+        ? {
+            id: latestSubmission.id,
+            sheetRevision: latestSubmission.sheetRevision,
+            submittedAt: latestSubmission.submittedAt,
+            builderConfigVersion: latestSubmission.builderConfigVersion,
+            contextVersionId: latestSubmission.contextVersionId,
+          }
+        : null,
+      approvedSubmission: approvedSubmission
+        ? {
+            id: approvedSubmission.id,
+            sheetRevision: approvedSubmission.sheetRevision,
+            submittedAt: approvedSubmission.submittedAt,
+            approvedAt: approvedSubmission.approvedAt,
+            approvedById: approvedSubmission.approvedById,
+            builderConfigVersion: approvedSubmission.builderConfigVersion,
+            contextVersionId: approvedSubmission.contextVersionId,
+          }
+        : null,
       episodeAnswers: character.episodeAnswers.map((answer) => ({
         id: answer.id,
         questionKey: answer.questionKey,

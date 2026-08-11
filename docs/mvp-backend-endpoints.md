@@ -919,7 +919,53 @@ Resposta `200`:
 ```json
 {
   "success": true,
-  "character": {}
+  "character": {
+    "id": "character-id",
+    "tableId": "table-id",
+    "ownerUserId": "user-id",
+    "name": "Ayla",
+    "concept": "Guardia em formacao",
+    "attributes": {
+      "strength": 2,
+      "agility": 2,
+      "vigor": 2,
+      "intellect": 2,
+      "presence": 2,
+      "spirit": 2
+    },
+    "derivedResources": {
+      "builderConfigVersion": "pilot-v1",
+      "hp": 18,
+      "energy": 10,
+      "ascensionPoints": 4
+    },
+    "sheetStatus": "CHANGES_REQUESTED",
+    "sheetRevision": 4,
+    "submittedRevision": 3,
+    "submittedAt": "2026-08-11T12:00:00.000Z",
+    "approvedAt": null,
+    "editable": true,
+    "nextAction": {
+      "key": "UPDATE_CHARACTER",
+      "title": "Ajustar personagem"
+    },
+    "masterFeedback": "Ajustar promessa.",
+    "latestSubmission": {
+      "id": "submission-snapshot-id",
+      "sheetRevision": 3,
+      "submittedAt": "2026-08-11T12:00:00.000Z",
+      "builderConfigVersion": "pilot-v1",
+      "contextVersionId": "context-version-id"
+    },
+    "approvedSubmission": null,
+    "episodeAnswers": [
+      {
+        "questionKey": "relationship_with_erya",
+        "promptSnapshot": "{\"builderConfigVersion\":\"pilot-v1\",\"questionVersion\":\"pilot-v1\"}",
+        "answer": "Erya me salvou na muralha."
+      }
+    ]
+  }
 }
 ```
 
@@ -927,7 +973,7 @@ Quando nao houver personagem, o contrato pode retornar `character: null`.
 
 Erros relevantes: `403 FORBIDDEN`, `404 TABLE_NOT_FOUND`.
 
-Publico ao proprio jogador: seu personagem.
+Publico ao proprio jogador: ficha completa propria, respostas do Episodio 1, recursos derivados, feedback do Mestre e referencias de snapshot.
 
 Secreto: outros personagens e dados de Mestre.
 
@@ -1006,6 +1052,8 @@ Erros relevantes: `400 CHARACTER_SHEET_INCOMPLETE`, `403 CHARACTER_FORBIDDEN`, `
 Publico ao proprio jogador: status de submissao.
 
 Secreto: fila completa do Mestre, dados de outros jogadores.
+
+Observacao de snapshot: cada submissao cria um registro imutavel de `CharacterSubmissionSnapshot` com `sheetRevision`, `submittedById`, `submittedAt`, `builderConfigVersion`, `contextVersionId`, `characterSnapshot` e `episodeAnswersSnapshot`. Ressubmissoes criam novos snapshots e nao sobrescrevem snapshots anteriores. A aprovacao do Mestre marca o snapshot da revisao efetivamente aprovada.
 
 ## IA assistiva do jogador
 

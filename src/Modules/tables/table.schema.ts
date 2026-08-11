@@ -317,7 +317,7 @@ const parseCharacterSheetInput = (body: Record<string, unknown>): CharacterSheet
 
 const requireStableKey = (value: unknown, fieldName: string): string => {
   const parsed = requireString(value, fieldName, 2, 80).toLowerCase();
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(parsed)) {
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(parsed)) {
     throw new AppError(400, `Campo ${fieldName} deve ser identificador estavel.`, "VALIDATION_ERROR");
   }
 

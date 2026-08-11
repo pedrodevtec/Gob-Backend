@@ -245,6 +245,8 @@ model User {
   acceptedTableInvitations TableInvitation[]         @relation("TableInvitationAccepter")
   approvedCharacters      Character[]                @relation("CharacterSheetApprover")
   characterReviewEvents   CharacterReviewEvent[]     @relation("CharacterReviewEventReviewer")
+  submittedCharacterSnapshots CharacterSubmissionSnapshot[] @relation("CharacterSubmissionSnapshotSubmitter")
+  approvedCharacterSnapshots  CharacterSubmissionSnapshot[] @relation("CharacterSubmissionSnapshotApprover")
   createdPublicCampaigns  PublicCampaign[]           @relation("PublicCampaignCreator")
   updatedPublicCampaigns  PublicCampaign[]           @relation("PublicCampaignUpdater")
   participantConsents     ParticipantConsent[]        @relation("ParticipantConsentUser")
@@ -330,6 +332,7 @@ model ContextVersion {
   approvedBy User?         @relation("ContextVersionApprover", fields: [approvedById], references: [id])
   units      ContextUnit[]
   tables     Table[]
+  characterSubmissionSnapshots CharacterSubmissionSnapshot[]
 
   @@unique([settingId, episodeId, layer, version])
   @@index([settingId, episodeId, layer, status, version])
@@ -427,6 +430,7 @@ model Character {
   pvpLossesAsLoser        PvpMatch[]                @relation("PvpMatchLoser")
   reviews                 CharacterReview[]
   episodeAnswers          CharacterEpisodeAnswer[]
+  submissionSnapshots     CharacterSubmissionSnapshot[]
   reviewEvents            CharacterReviewEvent[]
   traits                  CharacterTrait[]
   traitSuggestions        CharacterTraitSuggestion[]
@@ -1039,6 +1043,32 @@ model CharacterEpisodeAnswer {
 
   @@unique([characterId, questionKey])
   @@index([characterId, createdAt])
+}
+
+model CharacterSubmissionSnapshot {
+  id                     String   @id @default(uuid())
+  characterId            String
+  sheetRevision          Int
+  submittedById          String
+  submittedAt            DateTime
+  builderConfigVersion   String
+  contextVersionId       String
+  characterSnapshot      Json
+  episodeAnswersSnapshot Json
+  approvedAt             DateTime?
+  approvedById           String?
+  createdAt              DateTime @default(now())
+
+  character  Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  submittedBy User          @relation("CharacterSubmissionSnapshotSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  contextVersion ContextVersion @relation(fields: [contextVersionId], references: [id], onDelete: Restrict)
+  approvedBy User?         @relation("CharacterSubmissionSnapshotApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@unique([characterId, sheetRevision])
+  @@index([characterId, submittedAt])
+  @@index([submittedById, submittedAt])
+  @@index([contextVersionId])
+  @@index([approvedById, approvedAt])
 }
 
 model CharacterReviewEvent {

@@ -117,26 +117,35 @@ const validSheet = () => ({
   markAppearance: "Linhas prateadas",
   markReaction: "Aquece perto de perigo",
   markAttitude: "Desconfia da propria marca",
-  archetypeKey: "guardia-cautelosa",
+  archetypeKey: "guardian_blade",
   attributes: {
+    strength: 2,
+    agility: 2,
     vigor: 2,
-    agilidade: 2,
-    intelecto: 2,
-    presenca: 2,
-    vontade: 2,
-    percepcao: 2,
+    intellect: 2,
+    presence: 2,
+    spirit: 2,
   },
-  trainings: ["investigacao", "sobrevivencia", "negociacao"],
+  trainings: ["investigation", "survival", "influence"],
   positiveTrait: { text: "Observadora" },
   negativeTrait: { text: "Teimosa" },
   narrativeBond: "Confia no grupo por necessidade",
   personalHistory: "Cresceu ouvindo relatos contraditorios sobre os Guardioes.",
-  initialEquipment: [{ name: "caderno" }, { name: "faca simples" }],
+  initialEquipment: [{ slot: "main_hand", name: "faca simples" }],
+});
+
+const validEpisodeAnswers = () => ({
+  answers: [
+    { questionKey: "relationship_with_erya", answer: "Erya ajudou Ayla a entender o risco da Marca." },
+    { questionKey: "protection_in_bravantus", answer: "Ayla quer proteger os aprendizes do portao oeste." },
+    { questionKey: "past_connection_to_mandukuru", answer: "Ela viu sinais de Mandukuru antes do ataque." },
+    { questionKey: "fear_of_guardian_souls", answer: "Ela teme perder a propria vontade para uma alma antiga." },
+  ],
 });
 
 const assertNoSpoilerLeak = (value: unknown): void => {
   const serialized = JSON.stringify(value);
-  for (const forbidden of ["Zurich", "Erya", "TABLE_MASTER", "AUTHOR_ADMIN", "SECRET_CANON"]) {
+  for (const forbidden of ["Zurich", "TABLE_MASTER", "AUTHOR_ADMIN", "SECRET_CANON"]) {
     assert.equal(serialized.includes(forbidden), false, `Vazamento proibido: ${forbidden}`);
   }
 };
@@ -175,6 +184,7 @@ void (async () => {
   let characterA: any;
   let characterB: any;
   let reviewCharacter: any;
+  let legacyCharacter: any;
   let legacyClass: any;
 
   try {
@@ -334,6 +344,10 @@ void (async () => {
       });
       assert.equal(submit.status, 400);
       assert.equal(submit.body.error.code, "CHARACTER_SHEET_INCOMPLETE");
+      assert.equal(
+        await prisma.characterSubmissionSnapshot.count({ where: { characterId: characterA.id } }),
+        0
+      );
     });
 
     await test("27, 28, 29 e 30. Respostas, derivados e atributos invalidos sao protegidos", async () => {
@@ -342,8 +356,8 @@ void (async () => {
         headers: headers(ids.playerA),
         body: {
           answers: [
-            { questionKey: "vinculo-inicial", answer: "A" },
-            { questionKey: "vinculo-inicial", answer: "B" },
+            { questionKey: "relationship_with_erya", answer: "A" },
+            { questionKey: "relationship_with_erya", answer: "B" },
           ],
         },
       });
@@ -352,7 +366,7 @@ void (async () => {
       const otherAnswer = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${characterA.id}/episode-answers`, {
         method: "PATCH",
         headers: headers(ids.playerB),
-        body: { answers: [{ questionKey: "outro", answer: "Nao pode" }] },
+        body: { answers: [{ questionKey: "relationship_with_erya", answer: "Nao pode" }] },
       });
       assert.equal(otherAnswer.status, 404);
 
@@ -370,7 +384,7 @@ void (async () => {
         body: { attributes: { "nome inseguro!": 1, a: 1, b: 1, c: 1, d: 1, e: 1 } },
       });
       assert.equal(invalidAttributes.status, 400);
-      assert.equal(invalidAttributes.body.error.code, "UNKNOWN_ATTRIBUTE_NAME");
+      assert.equal(invalidAttributes.body.error.code, "INVALID_CHARACTER_ATTRIBUTES");
     });
 
     await test("8 e 9. Ficha valida submete e SUBMITTED nao edita", async () => {
@@ -383,15 +397,27 @@ void (async () => {
       const answers = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${characterA.id}/episode-answers`, {
         method: "PATCH",
         headers: headers(ids.playerA),
-        body: { answers: [{ questionKey: "vinculo-inicial", answer: "Conhece o grupo por necessidade." }] },
+        body: validEpisodeAnswers(),
       });
       assert.equal(answers.status, 200);
+      assert.equal(answers.body.character.derivedResources.hp, 18);
+      assert.equal(answers.body.character.derivedResources.energy, 10);
+      assert.equal(answers.body.character.derivedResources.ascensionPoints, 4);
       const submit = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${characterA.id}/submit`, {
         method: "POST",
         headers: headers(ids.playerA),
       });
       assert.equal(submit.status, 200);
       assert.equal(submit.body.character.sheetStatus, CharacterSheetStatus.SUBMITTED);
+      assert.equal(submit.body.character.latestSubmission.sheetRevision, submit.body.character.submittedRevision);
+      assert.equal(
+        await prisma.characterSubmissionSnapshot.count({ where: { characterId: characterA.id } }),
+        1
+      );
+      const firstSnapshot = await prisma.characterSubmissionSnapshot.findFirstOrThrow({
+        where: { characterId: characterA.id },
+      });
+      assert.equal((firstSnapshot.episodeAnswersSnapshot as any[]).length, 4);
 
       const editSubmitted = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${characterA.id}`, {
         method: "PATCH",
@@ -465,6 +491,10 @@ void (async () => {
       });
       assert.equal(submit.status, 200);
       assert.equal(submit.body.character.submittedRevision, submit.body.character.sheetRevision);
+      assert.equal(
+        await prisma.characterSubmissionSnapshot.count({ where: { characterId: characterA.id } }),
+        2
+      );
 
       const stale = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${characterA.id}/approve`, {
         method: "POST",
@@ -480,6 +510,13 @@ void (async () => {
       });
       assert.equal(approve.status, 200);
       assert.equal(approve.body.character.sheetStatus, CharacterSheetStatus.APPROVED);
+      assert.equal(approve.body.character.approvedSubmission.sheetRevision, submit.body.character.submittedRevision);
+      assert.equal(
+        await prisma.characterSubmissionSnapshot.count({
+          where: { characterId: characterA.id, approvedAt: { not: null } },
+        }),
+        1
+      );
       assert.equal(
         await prisma.characterReviewEvent.count({ where: { characterId: characterA.id, action: CharacterReviewAction.APPROVED } }),
         1
@@ -515,7 +552,7 @@ void (async () => {
       await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${reviewCharacter.id}/episode-answers`, {
         method: "PATCH",
         headers: headers(ids.playerB),
-        body: { answers: [{ questionKey: "vinculo-inicial", answer: "Resposta." }] },
+        body: validEpisodeAnswers(),
       });
       const submitted = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${reviewCharacter.id}/submit`, {
         method: "POST",
@@ -568,6 +605,33 @@ void (async () => {
       assert.equal(wrongTable.status, 403);
     });
 
+    await test("31 e 32. characters/me retorna ficha completa e personagem antigo continua legivel", async () => {
+      const me = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/me`, { headers: headers(ids.playerA) });
+      assert.equal(me.status, 200);
+      assert.equal(me.body.character.id, characterB.id);
+      assert.equal(me.body.character.editable, true);
+      assert.equal(me.body.character.latestSubmission, null);
+      assert.equal(me.body.character.approvedSubmission, null);
+
+      legacyCharacter = await prisma.character.create({
+        data: {
+          userId: ids.playerB,
+          tableId: tableA.id,
+          name: "Legado antigo",
+          classId: legacyClass.id,
+          creativeDossier: { soulLegacy: "Nao converter", positiveEcho: "Nao converter" },
+        },
+      });
+      const legacyRead = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${legacyCharacter.id}`, {
+        headers: headers(ids.playerB),
+      });
+      assert.equal(legacyRead.status, 200);
+      assert.deepEqual(legacyRead.body.character.creativeDossier, {
+        soulLegacy: "Nao converter",
+        positiveEcho: "Nao converter",
+      });
+    });
+
     await test("33. PostgreSQL exercita FKs e unicidade de answers", async () => {
       await assert.rejects(
         prisma.characterEpisodeAnswer.create({
@@ -589,7 +653,8 @@ void (async () => {
     console.log("Table Package 03 integration tests completed.");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-    const characterIds = [characterA?.id, characterB?.id, reviewCharacter?.id].filter(Boolean);
+    const characterIds = [characterA?.id, characterB?.id, reviewCharacter?.id, legacyCharacter?.id].filter(Boolean);
+    await prisma.characterSubmissionSnapshot.deleteMany({ where: { characterId: { in: characterIds } } });
     await prisma.characterReviewEvent.deleteMany({ where: { characterId: { in: characterIds } } });
     await prisma.characterEpisodeAnswer.deleteMany({ where: { characterId: { in: characterIds } } });
     await prisma.characterReview.deleteMany({ where: { characterId: { in: characterIds } } });

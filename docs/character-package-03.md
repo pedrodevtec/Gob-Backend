@@ -10,6 +10,7 @@ O Pacote 03 adiciona a base minima para personagens criados por jogadores dentro
 - mestre da mesma mesa solicita alteracoes com motivo;
 - jogador edita apos `CHANGES_REQUESTED` e reenvia;
 - mestre aprova a revisao submetida;
+- cada submissao preserva um snapshot imutavel da ficha e das respostas do episodio;
 - historico humano de revisao fica preservado;
 - acesso direto por id aplica mesa, dono e papel escopado.
 
@@ -27,6 +28,8 @@ Campos adicionados a `Character`:
 - ciclo de vida: `sheetStatus`, `sheetRevision`, `submittedRevision`, `submittedAt`, `approvedAt`, `approvedById`, `updatedAt`.
 
 `CharacterEpisodeAnswer` persiste respostas por pergunta de episodio com `questionKey`, `promptSnapshot` e `answer`. Existe unicidade por `(characterId, questionKey)`.
+
+`CharacterSubmissionSnapshot` preserva cada envio do jogador com `sheetRevision`, `submittedById`, `submittedAt`, `builderConfigVersion`, `contextVersionId`, `characterSnapshot` e `episodeAnswersSnapshot`. Ressubmissoes criam novos snapshots e nao sobrescrevem os anteriores. A aprovacao marca o snapshot da revisao aprovada.
 
 `CharacterReviewEvent` preserva auditoria com `reviewerUserId`, `action`, `reason`, `characterRevisionReviewed` e `createdAt`.
 
@@ -79,7 +82,7 @@ Totais derivados enviados pelo cliente sao rejeitados quando aparecem em objetos
 
 As respostas usam `questionKey` estavel e `promptSnapshot`. O modelo permite configurar perguntas por episodio no futuro sem gravar lore de Erya ou do Episodio 1 diretamente em `Character`.
 
-A exigencia das quatro perguntas exatas do Episodio 1 depende de uma fonte configuravel ou seed aprovado. O Pacote 03 apenas exige ao menos uma resposta para submissao.
+A submissao exige as quatro perguntas oficiais do Builder `pilot-v1`: `relationship_with_erya`, `protection_in_bravantus`, `past_connection_to_mandukuru` e `fear_of_guardian_souls`.
 
 ## Privacidade e spoilers
 
@@ -106,6 +109,8 @@ Regras minimas:
 - `GET /api/v1/tables/:tableId/characters/:characterId/reviews`;
 - `POST /api/v1/tables/:tableId/characters/:characterId/request-changes`;
 - `POST /api/v1/tables/:tableId/characters/:characterId/approve`.
+
+`GET /api/v1/tables/:tableId/characters/me` retorna a ficha completa do proprio jogador, respostas do Episodio 1, recursos derivados, status, revisoes, editabilidade, proxima acao, feedback do Mestre e referencias da submissao mais recente e da submissao aprovada, quando existirem.
 
 ## Persistencia e rollback
 

@@ -40,12 +40,12 @@ test("Package 03 rejeita ownership e auditoria enviados pelo cliente", () => {
 test("Package 03 normaliza payload minimo de ficha", () => {
   const request = req({
     name: "Ayla",
-    archetypeKey: "guardia-cautelosa",
+    archetypeKey: "guardian_blade",
     creativeDossier: { hook: "Juramento antigo", tone: "sombrio" },
   });
   validateCreatePackage03Character(request);
   assert.equal(request.body.name, "Ayla");
-  assert.equal(request.body.archetypeKey, "guardia-cautelosa");
+  assert.equal(request.body.archetypeKey, "guardian_blade");
   assert.deepEqual(request.body.creativeDossier, { hook: "Juramento antigo", tone: "sombrio" });
   assert.equal(request.body.ownerUserId, undefined);
 });
@@ -60,8 +60,8 @@ test("Package 03 rejeita resposta duplicada no mesmo payload", () => {
       validateUpsertCharacterEpisodeAnswers(
         req({
           answers: [
-            { questionKey: "vinculo-inicial", answer: "A" },
-            { questionKey: "vinculo-inicial", answer: "B" },
+            { questionKey: "relationship_with_erya", answer: "A" },
+            { questionKey: "relationship_with_erya", answer: "B" },
           ],
         })
       ),
