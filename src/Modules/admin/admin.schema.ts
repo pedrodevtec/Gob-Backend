@@ -1,4 +1,5 @@
 import { Request } from "express";
+import { AiUseCase, AiUsageStatus } from "@prisma/client";
 import { AppError } from "../../errors/AppError";
 import {
   getBody,
@@ -111,6 +112,47 @@ const optionalPositiveInt = (
   }
 
   return requirePositiveInt(value, fieldName, options);
+};
+
+const optionalQueryString = (value: unknown, fieldName: string, max = 100): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  return requireString(value, fieldName, 1, max);
+};
+
+const optionalQueryDate = (value: unknown, fieldName: string): Date | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = new Date(requireString(value, fieldName, 10, 80));
+  if (Number.isNaN(parsed.getTime())) {
+    throw new AppError(400, `Campo ${fieldName} deve ser uma data valida.`, "VALIDATION_ERROR");
+  }
+  return parsed;
+};
+
+export const validateAiUsageFilters = (req: Request): void => {
+  const query = req.query;
+  const useCase = optionalQueryString(query.useCase, "useCase", 80) as AiUseCase | undefined;
+  const status = optionalQueryString(query.status, "status", 20) as AiUsageStatus | undefined;
+
+  if (useCase && !Object.values(AiUseCase).includes(useCase)) {
+    throw new AppError(400, "useCase invalido.", "VALIDATION_ERROR");
+  }
+  if (status && !Object.values(AiUsageStatus).includes(status)) {
+    throw new AppError(400, "status invalido.", "VALIDATION_ERROR");
+  }
+
+  req.query = {
+    dateFrom: optionalQueryDate(query.dateFrom, "dateFrom") as any,
+    dateTo: optionalQueryDate(query.dateTo, "dateTo") as any,
+    useCase: useCase as any,
+    provider: optionalQueryString(query.provider, "provider", 80) as any,
+    model: optionalQueryString(query.model, "model", 120) as any,
+    status: status as any,
+    tableId: optionalQueryString(query.tableId, "tableId", 100) as any,
+  };
 };
 
 const parseMissionEnemy = (value: unknown, fieldName: string): MissionJourneyEnemyInput => {

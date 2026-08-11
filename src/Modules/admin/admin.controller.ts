@@ -3,6 +3,7 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/http";
 import { requireString } from "../../utils/validation";
 import { AdminService } from "./admin.service";
+import { AdminAiUsageService } from "./adminAiUsage.service";
 
 export const listMonsters = asyncHandler(async (_req: Request, res: Response) => {
   const monsters = await AdminService.listMonsters();
@@ -134,4 +135,19 @@ export const deleteShopProduct = asyncHandler(async (req: Request, res: Response
   const productId = requireString(req.params.id, "id");
   const result = await AdminService.deleteShopProduct(productId);
   sendSuccess(res, 200, result);
+});
+
+export const getAiUsageSummary = asyncHandler(async (req: Request, res: Response) => {
+  const summary = await AdminAiUsageService.summary(req.query as any);
+  sendSuccess(res, 200, { summary });
+});
+
+export const getAiUsageTimeseries = asyncHandler(async (req: Request, res: Response) => {
+  const timeseries = await AdminAiUsageService.timeseries(req.query as any);
+  sendSuccess(res, 200, { timeseries });
+});
+
+export const getAiUsageBreakdown = asyncHandler(async (req: Request, res: Response) => {
+  const breakdown = await AdminAiUsageService.breakdown(req.query as any);
+  sendSuccess(res, 200, { breakdown });
 });

@@ -15,6 +15,9 @@ import {
   deleteNpc,
   deleteShopProduct,
   deleteTraining,
+  getAiUsageBreakdown,
+  getAiUsageSummary,
+  getAiUsageTimeseries,
   listBounties,
   listMissions,
   listMonsters,
@@ -41,11 +44,16 @@ import {
   validateUpdateNpc,
   validateUpdateShopProduct,
   validateUpdateTraining,
+  validateAiUsageFilters,
 } from "./admin.schema";
 
 const router = Router();
 
 router.use(auth, adminOnly);
+
+router.get("/ai-usage/summary", validate(validateAiUsageFilters), getAiUsageSummary);
+router.get("/ai-usage/timeseries", validate(validateAiUsageFilters), getAiUsageTimeseries);
+router.get("/ai-usage/breakdown", validate(validateAiUsageFilters), getAiUsageBreakdown);
 
 router.get("/monsters", listMonsters);
 router.post("/monsters", validate(validateCreateMonster), createMonster);
