@@ -169,6 +169,74 @@ export const PILOT_V1_BUILDER_CONFIG: CharacterBuilderConfig = {
   ],
 };
 
+export const NARRATIVE_ASSISTED_V1_BUILDER_CONFIG: CharacterBuilderConfig = {
+  ...PILOT_V1_BUILDER_CONFIG,
+  version: "narrative-assisted-v1",
+  scope: [
+    "public_campaign_entry",
+    "narrative_character_creation",
+    "player_ai_interpretation",
+    "player_ai_mechanical_proposal",
+    "final_participant_survey",
+  ],
+  episodeQuestions: {
+    ...PILOT_V1_BUILDER_CONFIG.episodeQuestions,
+    requiredBeforeSubmission: false,
+    questions: PILOT_V1_BUILDER_CONFIG.episodeQuestions.questions.map((question) => ({
+      ...question,
+      required: false,
+    })),
+    rules: [
+      ...PILOT_V1_BUILDER_CONFIG.episodeQuestions.rules,
+      "Perguntas do episodio sao opcionais e nunca bloqueiam a criacao ou submissao do personagem.",
+      "Conexoes com o episodio sao preparadas pelo Mestre em uma etapa separada.",
+    ],
+  },
+  narrativeFlow: {
+    classification: "PRODUCT_DECISION",
+    visibleSteps: 4,
+    questions: [
+      {
+        key: "before_mark",
+        prompt: "Quem era seu personagem antes da Marca?",
+        helper: "Conte onde vivia, o que fazia, como era conhecido e um acontecimento importante do passado.",
+        required: true,
+      },
+      {
+        key: "motivation_and_bonds",
+        prompt: "O que faz seu personagem seguir em frente?",
+        helper: "Conte o que deseja alcançar ou proteger, o que teme perder e quem ou o que ainda o prende ao mundo.",
+        required: true,
+      },
+      {
+        key: "mark_change",
+        prompt: "Como a Marca mudou seu personagem?",
+        helper: "Descreva como ela se manifesta, quando reage e como seu personagem se sente por carregá-la.",
+        required: true,
+      },
+    ],
+    confirmationBlocks: ["identity", "motivations", "mark"],
+    requiredConfirmedFields: [
+      "name",
+      "concept",
+      "personalHistory",
+      "desire",
+      "narrativeBond",
+      "markAppearance",
+      "markAttitude",
+    ],
+    playStyleOptions: [
+      { key: "protect", name: "Proteger", description: "Proteger outras pessoas e resistir a ameacas." },
+      { key: "confront", name: "Enfrentar", description: "Agir diretamente quando o perigo aparece." },
+      { key: "investigate", name: "Investigar", description: "Interpretar pistas, sinais e acontecimentos." },
+      { key: "track", name: "Rastrear", description: "Observar, perseguir e agir a distancia." },
+      { key: "heal", name: "Amparar", description: "Curar e lidar com ecos espirituais." },
+      { key: "adapt", name: "Adaptar-se", description: "Encontrar caminhos inesperados para o grupo." },
+    ],
+  },
+};
+
 export const OFFICIAL_BUILDER_CONFIGS = {
   "pilot-v1": PILOT_V1_BUILDER_CONFIG,
+  "narrative-assisted-v1": NARRATIVE_ASSISTED_V1_BUILDER_CONFIG,
 } as const;

@@ -34,3 +34,16 @@ export const decideCharacterAiSuggestion = asyncHandler(async (req: Request, res
   const suggestion = await PlayerAiService.decideSuggestion(userId, tableId, suggestionId, req.body);
   sendSuccess(res, 200, { suggestion }, "Decisao de sugestao registrada com sucesso.");
 });
+
+export const suggestCharacterMechanics = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const proposal = await PlayerAiService.suggestCharacterMechanics(
+    userId,
+    tableId,
+    characterId,
+    req.body
+  );
+  sendSuccess(res, 200, { proposal });
+});

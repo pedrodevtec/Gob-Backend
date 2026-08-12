@@ -11,9 +11,11 @@ import {
   TableMemberStatus,
   TableStatus,
 } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 const PILOT_CAMPAIGN_SLUG = "pilot-v1";
+const PILOT_BUILDER_VERSION = "narrative-assisted-v1";
 
 type SeedNpc = {
   name: string;
@@ -86,48 +88,38 @@ type SeedMission = {
 };
 
 async function main() {
-  const adminEmail = process.env.SEED_ADMIN_EMAIL;
+  const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
 
-  if (adminEmail) {
-    const existingAdmin = await prisma.user.findUnique({
-      where: { email: adminEmail },
-    });
-
-    if (existingAdmin) {
-      await prisma.user.update({
-        where: { id: existingAdmin.id },
-        data: { accountRole: AccountRole.ADMIN },
-      });
-    }
+  if (!adminEmail || !adminPassword) {
+    throw new Error(
+      "SEED_ADMIN_EMAIL e SEED_ADMIN_PASSWORD sao obrigatorios para executar o seed."
+    );
+  }
+  if (adminPassword.length < 12) {
+    throw new Error("SEED_ADMIN_PASSWORD deve ter pelo menos 12 caracteres.");
   }
 
-  const existingSeedUsers = await prisma.user.findMany({
-    orderBy: { email: "asc" },
-    take: 2,
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: adminEmail },
   });
-  const pilotMaster =
-    existingSeedUsers.length === 1
-      ? await prisma.user.update({
-          where: { id: existingSeedUsers[0].id },
-          data: {
-            accountRole: AccountRole.ADMIN,
-            emailVerifiedAt: existingSeedUsers[0].emailVerifiedAt ?? new Date(),
-          },
-        })
-      : await prisma.user.upsert({
-          where: { email: "pilot-master@gob.local" },
-          update: {
-            nome: "Mestre do Piloto",
-            accountRole: AccountRole.ADMIN,
-          },
-          create: {
-            nome: "Mestre do Piloto",
-            email: "pilot-master@gob.local",
-            senha: "seed-disabled-password",
-            accountRole: AccountRole.ADMIN,
-            emailVerifiedAt: new Date(),
-          },
-        });
+  const pilotMaster = existingAdmin
+    ? await prisma.user.update({
+        where: { id: existingAdmin.id },
+        data: {
+          accountRole: AccountRole.ADMIN,
+          emailVerifiedAt: existingAdmin.emailVerifiedAt ?? new Date(),
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          nome: "Mestre do Piloto",
+          email: adminEmail,
+          senha: await bcrypt.hash(adminPassword, 10),
+          accountRole: AccountRole.ADMIN,
+          emailVerifiedAt: new Date(),
+        },
+      });
 
   const pilotSetting = await prisma.setting.upsert({
     where: { stableKey: "bravantus" },
@@ -259,7 +251,7 @@ async function main() {
       summary: "Teste fechado de criacao de personagens de Guardian of Bravantus.",
       tone: "Fantasia sombria heroica",
       characterCreationCriteria: {
-        builderConfigVersion: "pilot-v1",
+        builderConfigVersion: PILOT_BUILDER_VERSION,
         requiresCreativeDossier: true,
       },
     },
@@ -270,7 +262,7 @@ async function main() {
       tone: "Fantasia sombria heroica",
       rules: Prisma.JsonNull,
       characterCreationCriteria: {
-        builderConfigVersion: "pilot-v1",
+        builderConfigVersion: PILOT_BUILDER_VERSION,
         requiresCreativeDossier: true,
       },
     },
@@ -283,7 +275,7 @@ async function main() {
       title: "Chamado aos Marcados",
       description: "Teste fechado de criacao de personagens de Guardian of Bravantus",
       status: PublicCampaignStatus.ACTIVE,
-      builderConfigVersion: "pilot-v1",
+      builderConfigVersion: PILOT_BUILDER_VERSION,
       consentVersion: "research-pilot-v1",
       updatedById: pilotMaster.id,
       activatedAt: new Date(),
@@ -295,7 +287,7 @@ async function main() {
       title: "Chamado aos Marcados",
       description: "Teste fechado de criacao de personagens de Guardian of Bravantus",
       status: PublicCampaignStatus.ACTIVE,
-      builderConfigVersion: "pilot-v1",
+      builderConfigVersion: PILOT_BUILDER_VERSION,
       consentVersion: "research-pilot-v1",
       createdById: pilotMaster.id,
       activatedAt: new Date(),

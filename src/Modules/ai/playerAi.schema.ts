@@ -3,6 +3,7 @@ import { AppError } from "../../errors/AppError";
 import { getBody, optionalArray, optionalString, requirePositiveInt, requireString } from "../../utils/validation";
 import {
   CharacterChapterSuggestionInput,
+  CharacterMechanicalProposalInput,
   DecidePlayerAiSuggestionInput,
   PlayerCharacterAssistantInput,
 } from "./ai.types";
@@ -25,6 +26,13 @@ export const validatePlayerCharacterAssistant = (req: Request): void => {
     characterId,
     instruction: optionalString(body.instruction, "instruction", 1, 1000),
   } satisfies PlayerCharacterAssistantInput;
+};
+
+export const validateCharacterMechanicalProposal = (req: Request): void => {
+  const body = getBody(req);
+  req.body = {
+    expectedRevision: requirePositiveInt(body.expectedRevision, "expectedRevision", { min: 1 }),
+  } satisfies CharacterMechanicalProposalInput;
 };
 
 export const validateDecidePlayerAiSuggestion = (req: Request): void => {

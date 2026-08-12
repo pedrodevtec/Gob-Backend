@@ -1,12 +1,15 @@
 import { AppError } from "../../errors/AppError";
-import { OFFICIAL_BUILDER_CONFIGS, PILOT_V1_BUILDER_CONFIG } from "./builder.config";
+import {
+  NARRATIVE_ASSISTED_V1_BUILDER_CONFIG,
+  OFFICIAL_BUILDER_CONFIGS,
+} from "./builder.config";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 export class BuilderService {
   static getActiveConfig() {
-    return PILOT_V1_BUILDER_CONFIG;
+    return NARRATIVE_ASSISTED_V1_BUILDER_CONFIG;
   }
 
   static getConfig(version: string) {
@@ -19,8 +22,8 @@ export class BuilderService {
     return config;
   }
 
-  static normalizeArchetypeKey(value: string) {
-    const config = this.getActiveConfig();
+  static normalizeArchetypeKey(value: string, version?: string) {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
     const allowed = new Set(config.archetypes.options.map((option) => option.key));
 
     if (!allowed.has(value)) {
@@ -30,8 +33,8 @@ export class BuilderService {
     return value;
   }
 
-  static normalizeAttributes(value: unknown): Record<string, number> {
-    const config = this.getActiveConfig();
+  static normalizeAttributes(value: unknown, version?: string): Record<string, number> {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
     const allowedKeys = config.attributes.options.map((option) => option.key);
 
     if (!isRecord(value)) {
@@ -94,8 +97,8 @@ export class BuilderService {
     return normalized;
   }
 
-  static normalizeTrainings(value: unknown): string[] {
-    const config = this.getActiveConfig();
+  static normalizeTrainings(value: unknown, version?: string): string[] {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
     const allowed = new Set(config.trainings.options.map((option) => option.key));
 
     if (!Array.isArray(value) || value.length !== config.trainings.selection.exact) {
@@ -126,8 +129,8 @@ export class BuilderService {
     return normalized;
   }
 
-  static validateInitialEquipment(value: unknown): void {
-    const config = this.getActiveConfig();
+  static validateInitialEquipment(value: unknown, version?: string): void {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
     const allowedSlots = new Set(config.equipment.slots.map((slot) => slot.key));
 
     if (!Array.isArray(value) || value.length < config.equipment.minInitialItems || value.length > 10) {
@@ -164,14 +167,16 @@ export class BuilderService {
     }
   }
 
-  static getRequiredEpisodeQuestionKeys(): string[] {
-    return this.getActiveConfig().episodeQuestions.questions
+  static getRequiredEpisodeQuestionKeys(version?: string): string[] {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
+    return config.episodeQuestions.questions
       .filter((question) => question.required)
       .map((question) => question.questionKey);
   }
 
-  static getEpisodeQuestion(questionKey: string) {
-    const question = this.getActiveConfig().episodeQuestions.questions.find(
+  static getEpisodeQuestion(questionKey: string, version?: string) {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
+    const question = config.episodeQuestions.questions.find(
       (entry) => entry.questionKey === questionKey
     );
 
@@ -186,16 +191,17 @@ export class BuilderService {
     return question;
   }
 
-  static buildEpisodeQuestionSnapshot(questionKey: string): string {
-    const question = this.getEpisodeQuestion(questionKey);
+  static buildEpisodeQuestionSnapshot(questionKey: string, version?: string): string {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
+    const question = this.getEpisodeQuestion(questionKey, config.version);
     return JSON.stringify({
-      builderConfigVersion: this.getActiveConfig().version,
+      builderConfigVersion: config.version,
       questionVersion: question.version,
       prompt: question.prompt,
     });
   }
 
-  static calculateDerivedResources(attributes: unknown) {
+  static calculateDerivedResources(attributes: unknown, version?: string) {
     if (!isRecord(attributes)) {
       return null;
     }
@@ -207,7 +213,7 @@ export class BuilderService {
     }
 
     return {
-      builderConfigVersion: this.getActiveConfig().version,
+      builderConfigVersion: version ?? this.getActiveConfig().version,
       hp: 10 + vigor * 4,
       energy: 6 + vigor + spirit,
       ascensionPoints: 2 + spirit,

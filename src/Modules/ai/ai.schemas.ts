@@ -146,3 +146,53 @@ export const characterChapterSuggestionsOutputSchema: JsonSchema = {
   required: ["suggestions"],
   additionalProperties: false,
 };
+
+export const characterMechanicalProposalOutputSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    archetypes: {
+      type: "array",
+      minItems: 1,
+      maxItems: 3,
+      items: {
+        type: "object",
+        properties: { key: conciseString, rationale: conciseString },
+        required: ["key", "rationale"],
+        additionalProperties: false,
+      },
+    },
+    positiveTrait: conciseString,
+    negativeTrait: conciseString,
+    attributes: {
+      type: "object",
+      properties: {
+        strength: { type: "integer" },
+        agility: { type: "integer" },
+        vigor: { type: "integer" },
+        intellect: { type: "integer" },
+        presence: { type: "integer" },
+        spirit: { type: "integer" },
+      },
+      required: ["strength", "agility", "vigor", "intellect", "presence", "spirit"],
+      additionalProperties: false,
+    },
+    trainings: { type: "array", minItems: 3, maxItems: 3, items: conciseString },
+    equipment: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: {
+        type: "object",
+        properties: { slot: conciseString, name: conciseString, description: conciseString },
+        required: ["slot", "name", "description"],
+        additionalProperties: false,
+      },
+    },
+    rationale: conciseString,
+  },
+  required: [
+    "archetypes", "positiveTrait", "negativeTrait", "attributes",
+    "trainings", "equipment", "rationale",
+  ],
+  additionalProperties: false,
+};

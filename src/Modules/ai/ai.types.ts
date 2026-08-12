@@ -116,3 +116,20 @@ export interface CharacterChapterSuggestionOutput {
   promptVersion: string;
   cached: boolean;
 }
+
+export interface CharacterMechanicalProposalInput {
+  expectedRevision: number;
+}
+
+export interface CharacterMechanicalProposal {
+  id?: string;
+  archetypes: Array<{ key: string; rationale: string }>;
+  positiveTrait: string;
+  negativeTrait: string;
+  attributes: Record<string, number>;
+  trainings: string[];
+  equipment: Array<{ slot: string; name: string; description?: string }>;
+  rationale: string;
+  characterRevision: number;
+  promptVersion: string;
+}

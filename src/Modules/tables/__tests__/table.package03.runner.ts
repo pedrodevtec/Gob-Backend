@@ -50,6 +50,28 @@ test("Package 03 normaliza payload minimo de ficha", () => {
   assert.equal(request.body.ownerUserId, undefined);
 });
 
+test("Package 03 aceita contexto narrativo sem permitir forjar a versao", () => {
+  const request = req({
+    narrativeResponses: {
+      before_mark: "Era ferreira na muralha.",
+      motivation_and_bonds: "Protege a familia.",
+      mark_change: "A Marca aquece quando ha perigo.",
+    },
+    confirmedNarrativeContext: {
+      confirmedBlocks: ["identity", "motivations", "mark"],
+      fields: { name: "Ayla", concept: "Ferreira protetora" },
+    },
+    playStylePreference: "protect",
+  });
+  validateUpdatePackage03Character(request);
+  assert.equal(request.body.narrativeResponses.before_mark, "Era ferreira na muralha.");
+  assert.equal(request.body.playStylePreference, "protect");
+  assertAppErrorCode(
+    () => validateUpdatePackage03Character(req({ builderConfigVersion: "pilot-v1" })),
+    "FORBIDDEN_CHARACTER_FIELD"
+  );
+});
+
 test("Package 03 rejeita update sem campos validos", () => {
   assertAppErrorCode(() => validateUpdatePackage03Character(req({})), "VALIDATION_ERROR");
 });
