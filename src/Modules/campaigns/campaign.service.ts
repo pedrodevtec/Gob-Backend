@@ -10,6 +10,7 @@ import { AppError } from "../../errors/AppError";
 import { BuilderService } from "../builder/builder.service";
 import { TableService } from "../tables/table.service";
 import { CampaignPilotService } from "./campaignPilot.service";
+import { resolveCampaignJourney } from "./campaignJourney";
 import {
   CampaignStatusTransitionInput,
   CreatePublicCampaignInput,
@@ -24,6 +25,17 @@ const CONSENT_TEXT =
 const ACTIVE_PUBLIC_STATUSES: PublicCampaignStatus[] = [PublicCampaignStatus.ACTIVE];
 
 export class CampaignService {
+  static async getAdminCampaignBySlug(slug: string) {
+    const campaign = await prisma.publicCampaign.findUnique({
+      where: { slug },
+      include: this.campaignInclude(),
+    });
+    if (!campaign) {
+      throw new AppError(404, "Campanha nao encontrada.", "PUBLIC_CAMPAIGN_NOT_FOUND");
+    }
+    return this.formatPublicCampaign(campaign);
+  }
+
   static async createPublicCampaign(userId: string, input: CreatePublicCampaignInput) {
     const table = await prisma.table.findUnique({
       where: { id: input.tableId },
@@ -252,8 +264,14 @@ export class CampaignService {
         consent: consent ? this.formatConsent(consent) : null,
         membership: null,
         playerOverview: null,
+        character: null,
+        finalSurvey: null,
+        journeyState: "CONSENT_REQUIRED",
+        nextRoute: `/campanhas/${campaign.slug}/consentimento`,
         nextRecommendedAction: {
           key: "ACCEPT_CONSENT",
+          journeyState: "CONSENT_REQUIRED",
+          route: `/campanhas/${campaign.slug}/consentimento`,
           title: "Aceitar consentimento",
           description: "Aceite o consentimento vigente antes de entrar na campanha.",
           ctaLabel: "Ver consentimento",
@@ -267,8 +285,14 @@ export class CampaignService {
         consent: this.formatConsent(consent),
         membership: null,
         playerOverview: null,
+        character: null,
+        finalSurvey: null,
+        journeyState: "JOIN_REQUIRED",
+        nextRoute: `/campanhas/${campaign.slug}/consentimento`,
         nextRecommendedAction: {
           key: "JOIN_CAMPAIGN",
+          journeyState: "JOIN_REQUIRED",
+          route: `/campanhas/${campaign.slug}/consentimento`,
           title: "Entrar na campanha",
           description: "Entre na campanha para iniciar a criacao do personagem.",
           ctaLabel: "Entrar",
@@ -276,12 +300,48 @@ export class CampaignService {
       };
     }
 
+    const [character, finalSurvey] = await Promise.all([
+      prisma.character.findFirst({
+        where: { tableId: campaign.tableId, userId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          name: true,
+          sheetStatus: true,
+          sheetRevision: true,
+          submittedRevision: true,
+          submittedAt: true,
+          approvedAt: true,
+          builderConfigVersion: true,
+        },
+      }),
+      prisma.finalSurveyResponse.findUnique({
+        where: { userId_campaignId: { userId, campaignId: campaign.id } },
+        select: { id: true, surveyVersion: true, submittedAt: true },
+      }),
+    ]);
+    const journey = resolveCampaignJourney(campaign.slug, character, Boolean(finalSurvey));
+
     return {
       campaign: this.formatPublicCampaign(campaign),
       consent: this.formatConsent(consent),
       membership: activeMembership,
-      playerOverview: await TableService.getPlayerOverview(userId, campaign.tableId),
-      nextRecommendedAction: null,
+      playerOverview:
+        activeMembership.role === TableMemberRole.PLAYER
+          ? await TableService.getPlayerOverview(userId, campaign.tableId)
+          : null,
+      character,
+      finalSurvey,
+      journeyState: journey.state,
+      nextRoute: journey.route,
+      nextRecommendedAction: {
+        key: journey.actionKey,
+        journeyState: journey.state,
+        route: journey.route,
+        title: journey.title,
+        description: journey.description,
+        ctaLabel: journey.ctaLabel,
+      },
     };
   }
 

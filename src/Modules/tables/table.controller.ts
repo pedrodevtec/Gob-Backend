@@ -246,6 +246,27 @@ export const approveTableCharacter = asyncHandler(async (req: Request, res: Resp
   sendSuccess(res, 200, { character }, "Personagem aprovado.");
 });
 
+export const adaptLegacyTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const character = await TableCharacterPackage03Service.adaptLegacyCharacter(userId, tableId, characterId);
+  sendSuccess(res, 200, { character }, "Personagem preparado para revisão no modelo atual.");
+});
+
+export const deletePilotTableCharacter = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const tableId = requireString(req.params.tableId, "tableId");
+  const characterId = requireString(req.params.characterId, "characterId");
+  const result = await TableCharacterPackage03Service.deleteCharacterAsAdmin(
+    userId,
+    tableId,
+    characterId,
+    req.body.reason
+  );
+  sendSuccess(res, 200, result, "Personagem excluído pelo administrador.");
+});
+
 export const listTableCharacters = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");

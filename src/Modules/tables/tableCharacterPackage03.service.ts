@@ -1,4 +1,5 @@
 import {
+  AccountRole,
   CharacterReviewAction,
   CharacterReviewStatus,
   CharacterSheetStatus,
@@ -52,7 +53,8 @@ export class TableCharacterPackage03Service {
 
   static async createDraft(userId: string, tableId: string, input: CharacterSheetInput) {
     const membership = await TableAuthorizationService.requireTableMember(tableId, userId);
-    if (membership.role !== TableMemberRole.PLAYER) {
+    const account = await this.db.user.findUnique({ where: { id: userId }, select: { accountRole: true } });
+    if (membership.role !== TableMemberRole.PLAYER && account?.accountRole !== AccountRole.ADMIN) {
       throw new AppError(403, "Somente PLAYER ativo pode criar personagem proprio.", "TABLE_PLAYER_REQUIRED");
     }
 
@@ -266,6 +268,108 @@ export class TableCharacterPackage03Service {
     });
   }
 
+  static async adaptLegacyCharacter(adminUserId: string, tableId: string, characterId: string) {
+    await this.requireAdminAccount(adminUserId);
+    const current = await this.findTableCharacter(tableId, characterId);
+    if (current.narrativeResponses || current.confirmedNarrativeContext) {
+      throw new AppError(409, "Personagem ja usa o modelo atual.", "CHARACTER_ALREADY_CURRENT");
+    }
+
+    const sourceSnapshot = {
+      name: current.name,
+      concept: current.concept,
+      origin: current.origin,
+      appearance: current.appearance,
+      desire: current.desire,
+      fear: current.fear,
+      promiseOrGuilt: current.promiseOrGuilt,
+      reasonToActWithGroup: current.reasonToActWithGroup,
+      markLocation: current.markLocation,
+      markAppearance: current.markAppearance,
+      markReaction: current.markReaction,
+      markAttitude: current.markAttitude,
+      narrativeBond: current.narrativeBond,
+      personalHistory: current.personalHistory,
+      creativeDossier: current.creativeDossier,
+      sheetStatus: current.sheetStatus,
+      sheetRevision: current.sheetRevision,
+    } satisfies Prisma.InputJsonObject;
+    const fields = Object.fromEntries(
+      Object.entries(sourceSnapshot).filter(([, value]) => typeof value === "string" && value.trim())
+    ) as Record<string, string>;
+    const activeVersion = BuilderService.getActiveConfig().version;
+
+    const adapted = await this.db.$transaction(async (tx) => {
+      await tx.characterLegacyAdaptation.create({
+        data: { characterId, adminUserId, sourceSnapshot },
+      });
+      await tx.character.update({
+        where: { id: characterId },
+        data: {
+          builderConfigVersion: activeVersion,
+          narrativeResponses: {
+            before_mark: current.personalHistory || current.concept || "História anterior preservada para revisão.",
+            motivation_and_bonds: [current.desire, current.narrativeBond, current.reasonToActWithGroup]
+              .filter(Boolean)
+              .join(" ") || "Motivações preservadas para revisão.",
+            mark_change: [current.markAppearance, current.markReaction, current.markAttitude]
+              .filter(Boolean)
+              .join(" ") || "Relação com a Marca preservada para revisão.",
+          },
+          confirmedNarrativeContext: { confirmedBlocks: [], fields },
+          playStylePreference: null,
+          sheetStatus: CharacterSheetStatus.DRAFT,
+          submittedRevision: null,
+          submittedAt: null,
+          approvedAt: null,
+          approvedById: null,
+          sheetRevision: { increment: 1 },
+        },
+      });
+      return tx.character.findUniqueOrThrow({ where: { id: characterId }, include: characterInclude });
+    });
+    return this.formatCharacter(adapted);
+  }
+
+  static async deleteCharacterAsAdmin(
+    adminUserId: string,
+    tableId: string,
+    characterId: string,
+    reason: string
+  ) {
+    await this.requireAdminAccount(adminUserId);
+    const character = await this.findTableCharacter(tableId, characterId);
+
+    await this.db.$transaction(async (tx) => {
+      await tx.transaction.deleteMany({ where: { characterId } });
+      await tx.characterActionLog.deleteMany({ where: { characterId } });
+      await tx.characterReview.deleteMany({ where: { characterId } });
+      await tx.characterTrait.deleteMany({ where: { characterId } });
+      await tx.characterTraitSuggestion.deleteMany({ where: { characterId } });
+      await tx.tableMissionSubmission.deleteMany({ where: { characterId } });
+      await tx.playerAiSuggestion.deleteMany({ where: { characterId } });
+      await tx.aiUsageEvent.updateMany({ where: { characterId }, data: { characterId: null } });
+      await tx.analyticsEvent.updateMany({ where: { characterId }, data: { characterId: null } });
+      if (character.inventoryId) {
+        await tx.item.deleteMany({ where: { inventoryId: character.inventoryId } });
+        await tx.equipment.deleteMany({ where: { inventoryId: character.inventoryId } });
+        await tx.character.update({ where: { id: characterId }, data: { inventoryId: null } });
+        await tx.inventory.delete({ where: { id: character.inventoryId } });
+      }
+      await tx.character.delete({ where: { id: characterId } });
+      await tx.analyticsEvent.create({
+        data: {
+          eventKey: "admin_character_deleted",
+          userId: adminUserId,
+          tableId,
+          source: "pilot_admin",
+          metadata: { deletedCharacterId: characterId, ownerUserId: character.userId, reason },
+        },
+      });
+    });
+    return { deleted: true, characterId };
+  }
+
   private static async reviewSubmittedCharacter(input: {
     userId: string;
     tableId: string;
@@ -367,9 +471,17 @@ export class TableCharacterPackage03Service {
     return this.formatCharacter(result);
   }
 
+  private static async requireAdminAccount(userId: string) {
+    const user = await this.db.user.findUnique({ where: { id: userId }, select: { accountRole: true } });
+    if (user?.accountRole !== AccountRole.ADMIN) {
+      throw new AppError(403, "Ação restrita ao administrador.", "ADMIN_REQUIRED");
+    }
+  }
+
   private static async ensureEditableOwner(userId: string, tableId: string, characterId: string) {
     const membership = await TableAuthorizationService.requireTableMember(tableId, userId);
-    if (membership.role !== TableMemberRole.PLAYER) {
+    const account = await this.db.user.findUnique({ where: { id: userId }, select: { accountRole: true } });
+    if (membership.role !== TableMemberRole.PLAYER && account?.accountRole !== AccountRole.ADMIN) {
       throw new AppError(403, "Somente o PLAYER dono pode editar personagem.", "TABLE_PLAYER_REQUIRED");
     }
 
@@ -768,6 +880,11 @@ export class TableCharacterPackage03Service {
       id: character.id,
       tableId: character.tableId,
       ownerUserId: character.userId,
+      owner: {
+        id: character.user.id,
+        name: character.user.nome,
+        email: character.user.email,
+      },
       name: character.name,
       concept: character.concept,
       origin: character.origin,
@@ -813,6 +930,8 @@ export class TableCharacterPackage03Service {
             submittedAt: latestSubmission.submittedAt,
             builderConfigVersion: latestSubmission.builderConfigVersion,
             contextVersionId: latestSubmission.contextVersionId,
+            characterSnapshot: latestSubmission.characterSnapshot,
+            episodeAnswersSnapshot: latestSubmission.episodeAnswersSnapshot,
           }
         : null,
       approvedSubmission: approvedSubmission

@@ -5,6 +5,7 @@ import { validate } from "../../middleware/validate";
 import {
   createPublicCampaign,
   getCampaignOperationalOverview,
+  getAdminCampaignBySlug,
   getFinalSurveyConfig,
   getMyFinalSurvey,
   getConsentDocument,
@@ -42,6 +43,7 @@ router.post("/public/:slug/join", auth, joinPublicCampaign);
 
 router.use("/admin", auth, adminOnly);
 router.post("/admin", validate(validateCreatePublicCampaign), createPublicCampaign);
+router.get("/admin/by-slug/:slug", getAdminCampaignBySlug);
 router.get("/admin/:campaignId/operations", getCampaignOperationalOverview);
 router.patch("/admin/:campaignId", validate(validateUpdatePublicCampaign), updatePublicCampaign);
 router.post("/admin/:campaignId/status", validate(validateCampaignStatusTransition), transitionPublicCampaign);

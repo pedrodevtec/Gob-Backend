@@ -31,6 +31,12 @@ export const getPublicCampaign = asyncHandler(async (req: Request, res: Response
   sendSuccess(res, 200, { campaign });
 });
 
+export const getAdminCampaignBySlug = asyncHandler(async (req: Request, res: Response) => {
+  const slug = requireString(req.params.slug, "slug", 3, 80);
+  const campaign = await CampaignService.getAdminCampaignBySlug(slug);
+  sendSuccess(res, 200, { campaign });
+});
+
 export const getConsentDocument = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(res, 200, { consentDocument: CampaignService.getConsentDocument() });
 });

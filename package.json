@@ -37,8 +37,9 @@
     "test:context": "node --require ts-node/register src/Modules/context/__tests__/context.runner.ts",
     "test:context:integration": "node --require ts-node/register src/Modules/context/__tests__/context.integration.runner.ts",
     "test:builder-narrative": "node --require ts-node/register src/Modules/builder/__tests__/builder.narrative.runner.ts",
+    "test:campaign-journey": "node --require ts-node/register src/Modules/campaigns/__tests__/campaignJourney.runner.ts",
     "test:front1": "npm run test:auth && npm run test:context && npm run test:table-package03 && npm run test:ai-context && npm run test:ai && npm run test:ai-p1 && npm run test:middleware",
-    "test": "npm run test:builder-narrative && npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:ai-p1 && npm run test:middleware && npm run test:auth && npm run test:context",
+    "test": "npm run test:campaign-journey && npm run test:builder-narrative && npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:ai-p1 && npm run test:middleware && npm run test:auth && npm run test:context",
     "start": "node dist/server.js"
   },
   "prisma": {

@@ -8,6 +8,6 @@ export const previewCharacterCardArtPrompt = asyncHandler(async (req: Request, r
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
   const characterId = requireString(req.params.characterId, "characterId");
-  const preview = await CharacterCardArtService.previewApprovedCharacterArtPrompt(userId, tableId, characterId);
+  const preview = await CharacterCardArtService.previewSubmittedCharacterArtPrompt(userId, tableId, characterId);
   sendSuccess(res, 200, { preview });
 });
