@@ -21,7 +21,7 @@ export interface BuilderEpisodeQuestion {
 }
 
 export interface CharacterBuilderConfig {
-  version: "pilot-v1";
+  version: "pilot-v1" | "narrative-assisted-v1";
   status: "APPROVED";
   approvedBy: "PRODUCT_OWNER";
   scope: string[];
@@ -72,9 +72,22 @@ export interface CharacterBuilderConfig {
   };
   episodeQuestions: {
     classification: "PUBLIC_CANON_AND_RULE";
-    requiredBeforeSubmission: true;
+    requiredBeforeSubmission: boolean;
     questions: BuilderEpisodeQuestion[];
     rules: string[];
+  };
+  narrativeFlow?: {
+    classification: "PRODUCT_DECISION";
+    visibleSteps: number;
+    questions: Array<{
+      key: "before_mark" | "motivation_and_bonds" | "mark_change";
+      prompt: string;
+      helper: string;
+      required: true;
+    }>;
+    confirmationBlocks: Array<"identity" | "motivations" | "mark">;
+    requiredConfirmedFields: string[];
+    playStyleOptions: Array<{ key: string; name: string; description: string }>;
   };
   aiBoundaries: string[];
 }

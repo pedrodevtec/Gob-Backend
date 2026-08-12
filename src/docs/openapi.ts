@@ -155,7 +155,7 @@ export const openApiDocument = {
           "aiBoundaries",
         ],
         properties: {
-          version: { type: "string", enum: ["pilot-v1"] },
+          version: { type: "string", enum: ["pilot-v1", "narrative-assisted-v1"] },
           status: { type: "string", enum: ["APPROVED"] },
           approvedBy: { type: "string", enum: ["PRODUCT_OWNER"] },
           scope: { type: "array", items: { type: "string" } },
@@ -2200,7 +2200,7 @@ export const openApiDocument = {
         tags: ["Builder"],
         summary: "Obter configuracao do Character Builder por versao",
         description:
-          "Retorna uma versao oficial publicada do Character Builder. Atualmente a versao aprovada e pilot-v1.",
+          "Retorna uma versao oficial publicada do Character Builder. pilot-v1 permanece compativel e narrative-assisted-v1 e a versao ativa para novas campanhas.",
         parameters: [versionPathParam],
         responses: {
           "200": {
@@ -2841,13 +2841,13 @@ export const openApiDocument = {
     },
     "/api/v1/tables/{tableId}/characters/{characterId}": {
       get: { tags: ["Tables"], summary: "Obter personagem da mesa", description: "Dono le o proprio personagem. MASTER le personagens submetidos ou aprovados.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Personagem retornado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
-      patch: { tags: ["Tables"], summary: "Atualizar rascunho de personagem", description: "Somente o PLAYER dono pode editar personagem em DRAFT ou CHANGES_REQUESTED. Campos oficiais sao validados contra Builder pilot-v1.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterRequest" } } } }, responses: { "200": { description: "Rascunho atualizado" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+      patch: { tags: ["Tables"], summary: "Atualizar rascunho de personagem", description: "Somente o PLAYER dono pode editar personagem em DRAFT ou CHANGES_REQUESTED. Campos sao validados contra a versao registrada no personagem.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterRequest" } } } }, responses: { "200": { description: "Rascunho atualizado" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/episode-answers": {
       patch: { tags: ["Tables"], summary: "Salvar respostas contextuais do Episodio 1", description: "Somente o PLAYER dono pode salvar respostas enquanto o personagem estiver editavel. O backend registra o snapshot da pergunta a partir do Builder pilot-v1.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CharacterEpisodeAnswersRequest" } } } }, responses: { "200": { description: "Respostas salvas" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/submit": {
-      post: { tags: ["Tables"], summary: "Submeter personagem para revisao", description: "Submissao exige ficha completa e todas as quatro respostas oficiais do Episodio 1.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Personagem submetido" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+      post: { tags: ["Tables"], summary: "Submeter personagem para revisao", description: "Valida a matriz da versao do Builder. Em narrative-assisted-v1, perguntas do Episodio 1 sao opcionais.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Personagem submetido" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/ai/chapter-suggestions": {
       post: {
@@ -2877,6 +2877,25 @@ export const openApiDocument = {
         parameters: [tableIdPathParam, characterIdPathParam, { name: "suggestionId", in: "path", required: true, schema: { type: "string" } }],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PlayerAiSuggestionDecisionRequest" } } } },
         responses: { "200": { description: "Decisao registrada" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" }, "429": { description: "Rate limit excedido" } },
+      },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/ai/mechanical-proposal": {
+      post: {
+        tags: ["Tables AI"],
+        summary: "Sugerir ficha mecanica a partir da narrativa confirmada",
+        description: "Usa apenas contexto autorizado, narrativa confirmada, preferencia de jogo e catalogos oficiais. Retorna uma proposta sem alterar a ficha.",
+        security: authSecurity,
+        parameters: [tableIdPathParam, characterIdPathParam],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["expectedRevision"], properties: { expectedRevision: { type: "integer", minimum: 1 } } } } } },
+        responses: {
+          "200": { description: "Proposta mecanica retornada" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
+          "429": { description: "Rate limit excedido" },
+          "503": { description: "Assistente de IA indisponivel" },
+        },
       },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/card-art-prompt/preview": {

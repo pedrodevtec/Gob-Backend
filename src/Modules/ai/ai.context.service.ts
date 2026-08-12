@@ -391,6 +391,10 @@ export class AiContextService {
         narrativeBond: true,
         personalHistory: true,
         initialEquipment: true,
+        builderConfigVersion: true,
+        narrativeResponses: true,
+        confirmedNarrativeContext: true,
+        playStylePreference: true,
         sheetStatus: true,
         sheetRevision: true,
         episodeAnswers: {
@@ -410,7 +414,7 @@ export class AiContextService {
       throw new AppError(409, "Revisao esperada nao corresponde ao rascunho atual.", "STALE_CHARACTER_REVISION");
     }
 
-    const builderConfig = BuilderService.getActiveConfig();
+    const builderConfig = BuilderService.getConfig(character.builderConfigVersion);
     const context = {
       targetChapter: input.targetChapter,
       targetFields: normalizedFields,
@@ -431,13 +435,16 @@ export class AiContextService {
       builder: {
         version: builderConfig.version,
         aiBoundaries: builderConfig.aiBoundaries,
-        fieldRules: this.pickFieldRules(normalizedFields),
+        fieldRules: this.pickFieldRules(normalizedFields, builderConfig.version),
       },
       character: {
         id: character.id,
         sheetStatus: character.sheetStatus,
         sheetRevision: character.sheetRevision,
         fields: this.pickCharacterFields(character),
+        narrativeResponses: character.narrativeResponses,
+        confirmedNarrativeContext: character.confirmedNarrativeContext,
+        playStylePreference: character.playStylePreference,
         episodeAnswers: character.episodeAnswers.map((answer) => ({
           questionKey: answer.questionKey,
           promptSnapshot: answer.promptSnapshot,
@@ -468,8 +475,49 @@ export class AiContextService {
     };
   }
 
-  private static pickFieldRules(targetFields: string[]) {
-    const config = BuilderService.getActiveConfig();
+  static async buildAuthorizedMechanicalProposalContext(input: {
+    authenticatedUserId: string;
+    tableId: string;
+    characterId: string;
+    expectedRevision: number;
+  }) {
+    const authorized = await this.buildAuthorizedCharacterBuilderContext({
+      ...input,
+      targetChapter: "STORY",
+      targetFields: ["concept", "desire", "markAttitude"],
+      playerIntent: "Gerar proposta mecanica sem aplicar alteracoes.",
+    });
+    const character = authorized.context.character;
+    const config = BuilderService.getConfig(authorized.context.builder.version);
+    const responses = character.narrativeResponses && typeof character.narrativeResponses === "object"
+      ? character.narrativeResponses as Record<string, unknown>
+      : {};
+    const confirmed = character.confirmedNarrativeContext && typeof character.confirmedNarrativeContext === "object"
+      ? character.confirmedNarrativeContext as Record<string, unknown>
+      : {};
+    const confirmedBlocks = Array.isArray(confirmed.confirmedBlocks)
+      ? confirmed.confirmedBlocks.map(String)
+      : [];
+    const hasRequiredNarrative = Boolean(
+      config.narrativeFlow
+      && config.narrativeFlow.questions.every((question) => responses[question.key])
+      && config.narrativeFlow.confirmationBlocks.every((block) => confirmedBlocks.includes(block))
+    );
+
+    if (!hasRequiredNarrative || !character.playStylePreference) {
+      throw new AppError(
+        400,
+        "Confirme a interpretacao narrativa e a preferencia de jogo antes da proposta.",
+        "CONFIRMED_NARRATIVE_CONTEXT_REQUIRED"
+      );
+    }
+    return authorized;
+  }
+
+  private static pickFieldRules(targetFields: string[], builderConfigVersion?: string) {
+    const config = builderConfigVersion
+      ? BuilderService.getConfig(builderConfigVersion)
+      : BuilderService.getActiveConfig();
     const rules: Record<string, unknown> = {};
     for (const field of targetFields) {
       if (["positiveTrait", "negativeTrait", "narrativeBond"].includes(field)) {

@@ -1,6 +1,8 @@
 # Character Builder pilot-v1
 
-`pilot-v1` e a configuracao oficial aprovada pelo Product Owner para o piloto do Guardian of Bravantus.
+`pilot-v1` e a configuracao legada preservada para personagens e campanhas ja iniciados.
+Novos fluxos do piloto usam `narrative-assisted-v1`, documentado em
+`docs/character-builder-narrative-assisted-v1.md`.
 
 ## Contrato backend
 
@@ -25,7 +27,7 @@ O frontend deve consumir a resposta da API e nao duplicar catalogos, perguntas, 
 - treinamentos e bonus;
 - sugestoes abertas de Traits e vinculos;
 - slots e regras de equipamento;
-- perguntas obrigatorias do Episodio 1 com `questionKey` e versao;
+- perguntas obrigatorias do Episodio 1 com `questionKey` e versao, somente para o fluxo legado;
 - limites de IA assistiva do jogador.
 
 ## Fora do escopo desta configuracao

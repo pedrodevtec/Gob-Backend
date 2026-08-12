@@ -312,6 +312,12 @@ const parseCharacterSheetInput = (body: Record<string, unknown>): CharacterSheet
     personalHistory: optionalString(body.personalHistory, "personalHistory", 1, 8000),
     initialEquipment: body.initialEquipment,
     creativeDossier: optionalJsonObject(body.creativeDossier, "creativeDossier"),
+    narrativeResponses: optionalJsonObject(body.narrativeResponses, "narrativeResponses"),
+    confirmedNarrativeContext: optionalJsonObject(
+      body.confirmedNarrativeContext,
+      "confirmedNarrativeContext"
+    ),
+    playStylePreference: optionalString(body.playStylePreference, "playStylePreference", 2, 80),
   };
 };
 
@@ -337,6 +343,7 @@ const assertForbiddenCharacterClientFields = (body: Record<string, unknown>): vo
     "approvedAt",
     "approvedById",
     "approvedBy",
+    "builderConfigVersion",
     "reviewerUserId",
     "derived",
     "derivedValues",

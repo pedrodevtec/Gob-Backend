@@ -412,6 +412,10 @@ model Character {
   personalHistory String?
   initialEquipment Json?
   creativeDossier Json?
+  builderConfigVersion String              @default("pilot-v1")
+  narrativeResponses Json?
+  confirmedNarrativeContext Json?
+  playStylePreference String?
   sheetStatus     CharacterSheetStatus @default(DRAFT)
   sheetRevision   Int                  @default(1)
   submittedRevision Int?

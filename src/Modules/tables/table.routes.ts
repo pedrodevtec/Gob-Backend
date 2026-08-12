@@ -1,11 +1,13 @@
 import { Router } from "express";
 import auth from "../../middleware/auth";
+import { createRateLimiter } from "../../middleware/rateLimit";
 import { validate } from "../../middleware/validate";
 import aiRoutes from "../ai/ai.routes";
 import playerAiRoutes from "../ai/playerAi.routes";
 import {
   decideCharacterAiSuggestion,
   suggestCharacterChapter,
+  suggestCharacterMechanics,
 } from "../ai/playerAi.controller";
 import {
   approveTableCharacter,
@@ -81,11 +83,17 @@ import {
 } from "./table.schema";
 import {
   validateCharacterChapterSuggestions,
+  validateCharacterMechanicalProposal,
   validateDecidePlayerAiSuggestion,
 } from "../ai/playerAi.schema";
 import { previewCharacterCardArtPrompt } from "../cards/characterCardArt.controller";
 
 const router = Router();
+const characterAiRateLimiter = createRateLimiter(12, 60_000, {
+  scope: "tables-character-ai",
+  keyGenerator: (req) =>
+    `${req.user?.id ?? req.ip ?? "unknown"}:${req.params.tableId ?? "unknown-table"}`,
+});
 
 router.use("/:tableId/ai", aiRoutes);
 router.use("/:tableId/player-ai", playerAiRoutes);
@@ -127,8 +135,15 @@ router.patch(
 router.post("/:tableId/characters/:characterId/submit", submitTableCharacter);
 router.post(
   "/:tableId/characters/:characterId/ai/chapter-suggestions",
+  characterAiRateLimiter,
   validate(validateCharacterChapterSuggestions),
   suggestCharacterChapter
+);
+router.post(
+  "/:tableId/characters/:characterId/ai/mechanical-proposal",
+  characterAiRateLimiter,
+  validate(validateCharacterMechanicalProposal),
+  suggestCharacterMechanics
 );
 router.patch(
   "/:tableId/characters/:characterId/ai/suggestions/:suggestionId",

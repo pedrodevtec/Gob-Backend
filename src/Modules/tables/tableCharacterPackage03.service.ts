@@ -27,7 +27,12 @@ const characterInclude = {
   reviewEvents: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
   approvedBy: { select: { id: true, nome: true, email: true } },
   user: { select: { id: true, nome: true, email: true } },
-  table: { select: { contextVersionId: true } },
+  table: {
+    select: {
+      contextVersionId: true,
+      publicCampaign: { select: { builderConfigVersion: true } },
+    },
+  },
   reviews: { orderBy: { updatedAt: "desc" }, take: 1 },
   submissionSnapshots: { orderBy: [{ submittedAt: "desc" }, { id: "desc" }] },
 } satisfies Prisma.CharacterInclude;
@@ -51,8 +56,17 @@ export class TableCharacterPackage03Service {
       throw new AppError(403, "Somente PLAYER ativo pode criar personagem proprio.", "TABLE_PLAYER_REQUIRED");
     }
 
-    const legacyClass = await this.findLegacyClassForDraft();
-    const data = this.normalizeSheetData(input, { partial: true });
+    const [legacyClass, table] = await Promise.all([
+      this.findLegacyClassForDraft(),
+      this.db.table.findUnique({
+        where: { id: tableId },
+        select: { publicCampaign: { select: { builderConfigVersion: true } } },
+      }),
+    ]);
+    const builderConfigVersion =
+      table?.publicCampaign?.builderConfigVersion ?? BuilderService.getActiveConfig().version;
+    BuilderService.getConfig(builderConfigVersion);
+    const data = this.normalizeSheetData(input, { partial: true, builderConfigVersion });
     const character = await this.db.character.create({
       data: {
         ...data,
@@ -60,6 +74,7 @@ export class TableCharacterPackage03Service {
         userId,
         tableId,
         classId: legacyClass.id,
+        builderConfigVersion,
         sheetStatus: CharacterSheetStatus.DRAFT,
         sheetRevision: 1,
       },
@@ -88,8 +103,11 @@ export class TableCharacterPackage03Service {
   }
 
   static async updateDraft(userId: string, tableId: string, characterId: string, input: CharacterSheetInput) {
-    await this.ensureEditableOwner(userId, tableId, characterId);
-    const data = this.normalizeSheetData(input, { partial: true });
+    const current = await this.ensureEditableOwner(userId, tableId, characterId);
+    const data = this.normalizeSheetData(input, {
+      partial: true,
+      builderConfigVersion: current.builderConfigVersion,
+    });
 
     const character = await this.db.character.update({
       where: { id: characterId },
@@ -109,11 +127,14 @@ export class TableCharacterPackage03Service {
     characterId: string,
     answers: CharacterEpisodeAnswerInput[]
   ) {
-    await this.ensureEditableOwner(userId, tableId, characterId);
+    const current = await this.ensureEditableOwner(userId, tableId, characterId);
 
     const character = await this.db.$transaction(async (tx) => {
       for (const answer of answers) {
-        const promptSnapshot = BuilderService.buildEpisodeQuestionSnapshot(answer.questionKey);
+        const promptSnapshot = BuilderService.buildEpisodeQuestionSnapshot(
+          answer.questionKey,
+          current.builderConfigVersion
+        );
 
         await tx.characterEpisodeAnswer.upsert({
           where: {
@@ -391,32 +412,67 @@ export class TableCharacterPackage03Service {
   }
 
   private static assertReadyForSubmission(character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>) {
-    const missing = [
-      ["name", character.name],
-      ["concept", character.concept],
-      ["origin", character.origin],
-      ["appearance", character.appearance],
-      ["desire", character.desire],
-      ["fear", character.fear],
-      ["promiseOrGuilt", character.promiseOrGuilt],
-      ["reasonToActWithGroup", character.reasonToActWithGroup],
-      ["markLocation", character.markLocation],
-      ["markAppearance", character.markAppearance],
-      ["markReaction", character.markReaction],
-      ["markAttitude", character.markAttitude],
+    const config = BuilderService.getConfig(character.builderConfigVersion);
+    const mechanicalEntries: Array<[string, unknown]> = [
       ["archetypeKey", character.archetypeKey],
       ["attributes", character.attributes],
       ["trainings", character.trainings],
       ["positiveTrait", character.positiveTrait],
       ["negativeTrait", character.negativeTrait],
-      ["narrativeBond", character.narrativeBond],
-      ["personalHistory", character.personalHistory],
       ["initialEquipment", character.initialEquipment],
-      ...BuilderService.getRequiredEpisodeQuestionKeys().map((questionKey) => [
-        `episodeAnswers.${questionKey}`,
-        character.episodeAnswers.some((answer) => answer.questionKey === questionKey) ? "ok" : null,
-      ]),
-    ].filter((entry) => entry[1] === null || entry[1] === undefined || entry[1] === "");
+    ];
+    let requiredEntries: Array<[string, unknown]>;
+
+    if (config.narrativeFlow) {
+      const responses = this.jsonRecord(character.narrativeResponses);
+      const confirmed = this.jsonRecord(character.confirmedNarrativeContext);
+      const confirmedFields = this.jsonRecord(confirmed.fields);
+      const confirmedBlocks = Array.isArray(confirmed.confirmedBlocks)
+        ? confirmed.confirmedBlocks.map(String)
+        : [];
+      requiredEntries = [
+        ...config.narrativeFlow.questions.map((question) => [
+          `narrativeResponses.${question.key}`,
+          responses[question.key],
+        ] as [string, unknown]),
+        ...config.narrativeFlow.confirmationBlocks.map((block) => [
+          `confirmedNarrativeContext.${block}`,
+          confirmedBlocks.includes(block) ? "ok" : null,
+        ] as [string, unknown]),
+        ...config.narrativeFlow.requiredConfirmedFields.map((field) => [
+          field,
+          confirmedFields[field] ?? character[field as keyof typeof character],
+        ] as [string, unknown]),
+        ["playStylePreference", character.playStylePreference],
+        ...mechanicalEntries,
+      ];
+    } else {
+      requiredEntries = [
+        ["name", character.name],
+        ["concept", character.concept],
+        ["origin", character.origin],
+        ["appearance", character.appearance],
+        ["desire", character.desire],
+        ["fear", character.fear],
+        ["promiseOrGuilt", character.promiseOrGuilt],
+        ["reasonToActWithGroup", character.reasonToActWithGroup],
+        ["markLocation", character.markLocation],
+        ["markAppearance", character.markAppearance],
+        ["markReaction", character.markReaction],
+        ["markAttitude", character.markAttitude],
+        ["narrativeBond", character.narrativeBond],
+        ["personalHistory", character.personalHistory],
+        ...mechanicalEntries,
+        ...BuilderService.getRequiredEpisodeQuestionKeys(character.builderConfigVersion).map((questionKey) => [
+          `episodeAnswers.${questionKey}`,
+          character.episodeAnswers.some((answer) => answer.questionKey === questionKey) ? "ok" : null,
+        ] as [string, unknown]),
+      ];
+    }
+
+    const missing = requiredEntries.filter((entry) =>
+      entry[1] === null || entry[1] === undefined || entry[1] === ""
+    );
 
     if (missing.length) {
       throw new AppError(
@@ -426,9 +482,25 @@ export class TableCharacterPackage03Service {
         { missingFields: missing.map((entry) => entry[0]) }
       );
     }
+
+    BuilderService.normalizeArchetypeKey(character.archetypeKey!, character.builderConfigVersion);
+    BuilderService.normalizeAttributes(character.attributes, character.builderConfigVersion);
+    BuilderService.normalizeTrainings(character.trainings, character.builderConfigVersion);
+    this.normalizeTrait(character.positiveTrait, "positiveTrait");
+    this.normalizeTrait(character.negativeTrait, "negativeTrait");
+    this.normalizeEquipment(character.initialEquipment, character.builderConfigVersion);
   }
 
-  private static normalizeSheetData(input: CharacterSheetInput, options: { partial: boolean }) {
+  private static jsonRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+  }
+
+  private static normalizeSheetData(
+    input: CharacterSheetInput,
+    options: { partial: boolean; builderConfigVersion: string }
+  ) {
     return {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.concept !== undefined ? { concept: input.concept } : {}),
@@ -442,15 +514,24 @@ export class TableCharacterPackage03Service {
       ...(input.markAppearance !== undefined ? { markAppearance: input.markAppearance } : {}),
       ...(input.markReaction !== undefined ? { markReaction: input.markReaction } : {}),
       ...(input.markAttitude !== undefined ? { markAttitude: input.markAttitude } : {}),
-      ...(input.archetypeKey !== undefined ? { archetypeKey: BuilderService.normalizeArchetypeKey(input.archetypeKey) } : {}),
-      ...(input.attributes !== undefined ? { attributes: BuilderService.normalizeAttributes(input.attributes) } : {}),
-      ...(input.trainings !== undefined ? { trainings: BuilderService.normalizeTrainings(input.trainings) } : {}),
+      ...(input.archetypeKey !== undefined ? { archetypeKey: BuilderService.normalizeArchetypeKey(input.archetypeKey, options.builderConfigVersion) } : {}),
+      ...(input.attributes !== undefined ? { attributes: BuilderService.normalizeAttributes(input.attributes, options.builderConfigVersion) } : {}),
+      ...(input.trainings !== undefined ? { trainings: BuilderService.normalizeTrainings(input.trainings, options.builderConfigVersion) } : {}),
       ...(input.positiveTrait !== undefined ? { positiveTrait: this.normalizeTrait(input.positiveTrait, "positiveTrait") } : {}),
       ...(input.negativeTrait !== undefined ? { negativeTrait: this.normalizeTrait(input.negativeTrait, "negativeTrait") } : {}),
       ...(input.narrativeBond !== undefined ? { narrativeBond: input.narrativeBond } : {}),
       ...(input.personalHistory !== undefined ? { personalHistory: input.personalHistory } : {}),
-      ...(input.initialEquipment !== undefined ? { initialEquipment: this.normalizeEquipment(input.initialEquipment) } : {}),
+      ...(input.initialEquipment !== undefined ? { initialEquipment: this.normalizeEquipment(input.initialEquipment, options.builderConfigVersion) } : {}),
       ...(input.creativeDossier !== undefined ? { creativeDossier: input.creativeDossier } : {}),
+      ...(input.narrativeResponses !== undefined
+        ? { narrativeResponses: this.normalizeNarrativeResponses(input.narrativeResponses) }
+        : {}),
+      ...(input.confirmedNarrativeContext !== undefined
+        ? { confirmedNarrativeContext: this.normalizeConfirmedNarrativeContext(input.confirmedNarrativeContext) }
+        : {}),
+      ...(input.playStylePreference !== undefined
+        ? { playStylePreference: this.normalizePlayStylePreference(input.playStylePreference, options.builderConfigVersion) }
+        : {}),
     };
   }
 
@@ -523,8 +604,8 @@ export class TableCharacterPackage03Service {
     return value as Prisma.InputJsonObject;
   }
 
-  private static normalizeEquipment(value: unknown): Prisma.InputJsonValue {
-    BuilderService.validateInitialEquipment(value);
+  private static normalizeEquipment(value: unknown, builderConfigVersion: string): Prisma.InputJsonValue {
+    BuilderService.validateInitialEquipment(value, builderConfigVersion);
 
     if (!Array.isArray(value) || value.length < 1 || value.length > 10) {
       throw new AppError(400, "initialEquipment deve ser lista com 1 a 10 itens.", "INVALID_CHARACTER_EQUIPMENT");
@@ -544,6 +625,55 @@ export class TableCharacterPackage03Service {
       }
       return object as Prisma.InputJsonObject;
     });
+  }
+
+  private static normalizeNarrativeResponses(value: Prisma.InputJsonObject): Prisma.InputJsonValue {
+    const allowed = new Set(["before_mark", "motivation_and_bonds", "mark_change"]);
+    const entries = Object.entries(value);
+    if (entries.some(([key]) => !allowed.has(key))) {
+      throw new AppError(400, "Resposta narrativa desconhecida.", "INVALID_NARRATIVE_RESPONSES");
+    }
+    const normalized: Record<string, string> = {};
+    for (const [key, answer] of entries) {
+      if (typeof answer !== "string" || answer.trim().length < 1 || answer.trim().length > 8000) {
+        throw new AppError(400, "Resposta narrativa invalida.", "INVALID_NARRATIVE_RESPONSES");
+      }
+      normalized[key] = answer.trim();
+    }
+    return normalized;
+  }
+
+  private static normalizeConfirmedNarrativeContext(value: Prisma.InputJsonObject): Prisma.InputJsonValue {
+    const blocks = value.confirmedBlocks;
+    const fields = value.fields;
+    const allowedBlocks = new Set(["identity", "motivations", "mark"]);
+    const allowedFields = new Set([
+      "name", "concept", "origin", "appearance", "personalHistory", "desire", "fear",
+      "narrativeBond", "promiseOrGuilt", "reasonToActWithGroup", "markLocation",
+      "markAppearance", "markReaction", "markAttitude",
+    ]);
+    if (!Array.isArray(blocks) || blocks.some((block) => typeof block !== "string" || !allowedBlocks.has(block))) {
+      throw new AppError(400, "Blocos narrativos confirmados invalidos.", "INVALID_CONFIRMED_NARRATIVE_CONTEXT");
+    }
+    if (!fields || typeof fields !== "object" || Array.isArray(fields)) {
+      throw new AppError(400, "Campos narrativos confirmados invalidos.", "INVALID_CONFIRMED_NARRATIVE_CONTEXT");
+    }
+    const normalizedFields: Record<string, string> = {};
+    for (const [key, content] of Object.entries(fields)) {
+      if (!allowedFields.has(key) || typeof content !== "string" || content.trim().length > 8000) {
+        throw new AppError(400, "Campo narrativo confirmado invalido.", "INVALID_CONFIRMED_NARRATIVE_CONTEXT");
+      }
+      if (content.trim()) normalizedFields[key] = content.trim();
+    }
+    return { confirmedBlocks: [...new Set(blocks)], fields: normalizedFields };
+  }
+
+  private static normalizePlayStylePreference(value: string, builderConfigVersion: string): string {
+    const options = BuilderService.getConfig(builderConfigVersion).narrativeFlow?.playStyleOptions ?? [];
+    if (!options.some((option) => option.key === value)) {
+      throw new AppError(400, "Preferencia de jogo invalida.", "INVALID_PLAY_STYLE_PREFERENCE");
+    }
+    return value;
   }
 
   private static assertNoDerivedFields(value: Record<string, unknown>): void {
@@ -567,7 +697,7 @@ export class TableCharacterPackage03Service {
       sheetRevision: input.sheetRevision,
       submittedById: input.submittedById,
       submittedAt: input.submittedAt,
-      builderConfigVersion: BuilderService.getActiveConfig().version,
+      builderConfigVersion: character.builderConfigVersion,
       contextVersionId: character.table.contextVersionId,
       characterSnapshot: {
         id: character.id,
@@ -594,7 +724,14 @@ export class TableCharacterPackage03Service {
         personalHistory: character.personalHistory,
         initialEquipment: character.initialEquipment,
         creativeDossier: character.creativeDossier,
-        derivedResources: BuilderService.calculateDerivedResources(character.attributes),
+        builderConfigVersion: character.builderConfigVersion,
+        narrativeResponses: character.narrativeResponses,
+        confirmedNarrativeContext: character.confirmedNarrativeContext,
+        playStylePreference: character.playStylePreference,
+        derivedResources: BuilderService.calculateDerivedResources(
+          character.attributes,
+          character.builderConfigVersion
+        ),
         sheetRevision: input.sheetRevision,
       },
       episodeAnswersSnapshot: character.episodeAnswers.map((answer) => ({
@@ -652,7 +789,14 @@ export class TableCharacterPackage03Service {
       personalHistory: character.personalHistory,
       initialEquipment: character.initialEquipment,
       creativeDossier: character.creativeDossier,
-      derivedResources: BuilderService.calculateDerivedResources(character.attributes),
+      builderConfigVersion: character.builderConfigVersion,
+      narrativeResponses: character.narrativeResponses,
+      confirmedNarrativeContext: character.confirmedNarrativeContext,
+      playStylePreference: character.playStylePreference,
+      derivedResources: BuilderService.calculateDerivedResources(
+        character.attributes,
+        character.builderConfigVersion
+      ),
       sheetStatus: character.sheetStatus,
       sheetRevision: character.sheetRevision,
       submittedRevision: character.submittedRevision,

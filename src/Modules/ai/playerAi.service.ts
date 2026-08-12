@@ -15,11 +15,14 @@ import { AiContextService } from "./ai.context.service";
 import { AiGateway } from "./ai.gateway";
 import {
   characterChapterSuggestionsOutputSchema,
+  characterMechanicalProposalOutputSchema,
   playerCharacterAssistantOutputSchema,
 } from "./ai.schemas";
 import {
   CharacterChapterSuggestionInput,
   CharacterChapterSuggestionOutput,
+  CharacterMechanicalProposal,
+  CharacterMechanicalProposalInput,
   DecidePlayerAiSuggestionInput,
   PlayerCharacterAssistantInput,
   PlayerCharacterAssistantOutput,
@@ -36,6 +39,7 @@ const PLAYER_ASSISTANT_INSTRUCTIONS = [
 ].join(" ");
 
 const CHARACTER_CHAPTER_PROMPT_VERSION = "character-chapter-v1";
+const CHARACTER_MECHANICS_PROMPT_VERSION = "character-mechanics-v1";
 const MAX_CHAPTER_SUGGESTIONS = 3;
 
 const CHAPTER_ASSISTANT_INSTRUCTIONS = [
@@ -236,7 +240,7 @@ export class PlayerAiService {
             characterId,
             useCase,
             targetField: sanitized.targetField,
-            builderConfigVersion: BuilderService.getActiveConfig().version,
+            builderConfigVersion: authorized.context.builder.version,
             promptVersion: CHARACTER_CHAPTER_PROMPT_VERSION,
             fingerprint,
             contextVersionId: authorized.contextVersionId,
@@ -254,6 +258,97 @@ export class PlayerAiService {
       promptVersion: CHARACTER_CHAPTER_PROMPT_VERSION,
       cached: false,
     };
+  }
+
+  static async suggestCharacterMechanics(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    input: CharacterMechanicalProposalInput
+  ): Promise<CharacterMechanicalProposal> {
+    const authorized = await AiContextService.buildAuthorizedMechanicalProposalContext({
+      authenticatedUserId: userId,
+      tableId,
+      characterId,
+      expectedRevision: input.expectedRevision,
+    });
+    const context = authorized.context;
+    const builderConfig = BuilderService.getConfig(context.builder.version);
+    const result = await AiGateway.generateStructured<Omit<CharacterMechanicalProposal, "id" | "characterRevision" | "promptVersion">>({
+      useCase: "PLAYER_CHARACTER_CREATION",
+      userId,
+      tableId,
+      characterId,
+      contextVersionId: authorized.contextVersionId,
+      promptVersion: CHARACTER_MECHANICS_PROMPT_VERSION,
+      schemaName: "character_mechanical_proposal",
+      schema: characterMechanicalProposalOutputSchema,
+      maxOutputTokens: 1200,
+      instructions: [
+        CHAPTER_ASSISTANT_INSTRUCTIONS,
+        "Use somente o contexto narrativo confirmado e a preferencia de jogo.",
+        "Use exclusivamente arquetipos, atributos, treinamentos e slots presentes no catalogo enviado.",
+        "A proposta nunca e aplicada automaticamente.",
+      ].join(" "),
+      prompt: JSON.stringify({
+        confirmedNarrativeContext: context.character.confirmedNarrativeContext,
+        playStylePreference: context.character.playStylePreference,
+        publicContext: context.publicContext,
+        catalogs: {
+          archetypes: builderConfig.archetypes.options,
+          attributes: builderConfig.attributes,
+          trainings: builderConfig.trainings,
+          equipment: builderConfig.equipment,
+        },
+      }),
+    });
+
+    const allowedArchetypes = new Set(builderConfig.archetypes.options.map((item) => item.key));
+    const archetypes = result.data.archetypes
+      .filter((item) => allowedArchetypes.has(item.key))
+      .slice(0, 3)
+      .map((item) => ({ key: item.key, rationale: item.rationale.trim().slice(0, 500) }));
+    if (!archetypes.length) {
+      throw new AppError(502, "A IA nao retornou arquetipo oficial valido.", "INVALID_AI_MECHANICAL_PROPOSAL");
+    }
+    const attributes = BuilderService.normalizeAttributes(result.data.attributes, builderConfig.version);
+    const trainings = BuilderService.normalizeTrainings(result.data.trainings, builderConfig.version);
+    const equipment = result.data.equipment.map((item) => ({
+      slot: item.slot,
+      name: item.name.trim().slice(0, 120),
+      description: item.description?.trim().slice(0, 500),
+    }));
+    BuilderService.validateInitialEquipment(equipment, builderConfig.version);
+    const proposal = {
+      archetypes,
+      positiveTrait: result.data.positiveTrait.trim().slice(0, 500),
+      negativeTrait: result.data.negativeTrait.trim().slice(0, 500),
+      attributes,
+      trainings,
+      equipment,
+      rationale: result.data.rationale.trim().slice(0, 1000),
+      characterRevision: authorized.characterRevision,
+      promptVersion: CHARACTER_MECHANICS_PROMPT_VERSION,
+    };
+    this.assertNoProtectedMarkers(proposal);
+
+    const record = await prisma.playerAiSuggestion.create({
+      data: {
+        userId,
+        tableId,
+        characterId,
+        useCase: "PLAYER_CHARACTER_CREATION",
+        targetField: "mechanicalProposal",
+        builderConfigVersion: builderConfig.version,
+        promptVersion: CHARACTER_MECHANICS_PROMPT_VERSION,
+        contextVersionId: authorized.contextVersionId,
+        aiUsageEventId: result.usageEventId ?? null,
+        model: result.model,
+        suggestion: proposal as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    return { id: record.id, ...proposal };
   }
 
   static async decideSuggestion(
@@ -371,6 +466,15 @@ export class PlayerAiService {
       }
     }
     return value;
+  }
+
+  private static assertNoProtectedMarkers(value: unknown): void {
+    const serialized = JSON.stringify(value).toLowerCase();
+    for (const marker of FORBIDDEN_RESPONSE_MARKERS) {
+      if (serialized.includes(marker.toLowerCase())) {
+        throw new AppError(502, "Resposta da IA bloqueada por conter dado protegido.", "AI_RESPONSE_SECRET_LEAK_BLOCKED");
+      }
+    }
   }
 
   private static formatChapterSuggestion(record: PlayerAiSuggestion) {
