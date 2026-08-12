@@ -282,6 +282,7 @@ model User {
   aiUsageEvents           AiUsageEvent[]              @relation("AiUsageEventUser")
   finalSurveyResponses    FinalSurveyResponse[]       @relation("FinalSurveyResponseUser")
   analyticsEvents         AnalyticsEvent[]            @relation("AnalyticsEventUser")
+  characterLegacyAdaptations CharacterLegacyAdaptation[] @relation("CharacterLegacyAdaptationAdmin")
 }
 
 model EmailVerificationToken {
@@ -471,6 +472,7 @@ model Character {
   playerAiSuggestions     PlayerAiSuggestion[]
   aiUsageEvents           AiUsageEvent[]
   analyticsEvents         AnalyticsEvent[]
+  legacyAdaptation        CharacterLegacyAdaptation?
   tableMissionSubmissions TableMissionSubmission[]
   timelineEvents          TableTimelineEvent[]
 
@@ -1188,6 +1190,19 @@ model CharacterReviewEvent {
 
   @@index([characterId, createdAt])
   @@index([reviewerUserId, createdAt])
+}
+
+model CharacterLegacyAdaptation {
+  id             String   @id @default(uuid())
+  characterId    String   @unique
+  adminUserId    String
+  sourceSnapshot Json
+  adaptedAt      DateTime @default(now())
+
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  admin     User      @relation("CharacterLegacyAdaptationAdmin", fields: [adminUserId], references: [id], onDelete: Restrict)
+
+  @@index([adminUserId, adaptedAt])
 }
 
 model CharacterTrait {

@@ -71,6 +71,10 @@ export interface ReviewCharacterInput {
   expectedRevision?: number;
 }
 
+export interface DeletePilotCharacterInput {
+  reason: string;
+}
+
 export interface JoinTableInput {
   joinCode: string;
 }

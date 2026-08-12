@@ -1,4 +1,4 @@
-import { AiUsageStatus, Prisma, TableMemberRole } from "@prisma/client";
+import { AccountRole, AiUsageStatus, Prisma, TableMemberRole } from "@prisma/client";
 import defaultPrisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { AiGateway } from "../ai/ai.gateway";
@@ -74,9 +74,10 @@ export class CharacterCardArtService {
     this.db = defaultPrisma;
   }
 
-  static async previewApprovedCharacterArtPrompt(userId: string, tableId: string, characterId: string) {
+  static async previewSubmittedCharacterArtPrompt(userId: string, tableId: string, characterId: string) {
     const roleContext = await TableService.getTableRoleContext(tableId, userId);
-    if (roleContext.role !== TableMemberRole.PLAYER) {
+    const account = await this.db.user.findUnique({ where: { id: userId }, select: { accountRole: true } });
+    if (roleContext.role !== TableMemberRole.PLAYER && account?.accountRole !== AccountRole.ADMIN) {
       throw new AppError(403, "Preview de carta restrito ao jogador dono.", "TABLE_PLAYER_REQUIRED");
     }
 
@@ -86,9 +87,9 @@ export class CharacterCardArtService {
         id: true,
         userId: true,
         tableId: true,
+        table: { select: { publicCampaign: { select: { id: true } } } },
         submissionSnapshots: {
-          where: { approvedAt: { not: null } },
-          orderBy: [{ approvedAt: "desc" }, { submittedAt: "desc" }, { id: "desc" }],
+          orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
           take: 1,
           select: {
             id: true,
@@ -105,8 +106,8 @@ export class CharacterCardArtService {
       throw new AppError(404, "Personagem nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
     }
 
-    const approvedSubmission = character.submissionSnapshots[0] ?? null;
-    if (!approvedSubmission) {
+    const submittedSnapshot = character.submissionSnapshots[0] ?? null;
+    if (!submittedSnapshot) {
       await AiGateway.recordInternalEvent({
         useCase: "CHARACTER_CARD_ART_PROMPT",
         userId,
@@ -116,13 +117,24 @@ export class CharacterCardArtService {
         provider: "internal",
         model: "prompt-builder",
         status: AiUsageStatus.ERROR,
-        errorCode: "APPROVED_SUBMISSION_REQUIRED",
+        errorCode: "CHARACTER_SUBMISSION_REQUIRED",
       });
-      throw new AppError(409, "Personagem precisa de submissao aprovada para preparar carta.", "APPROVED_SUBMISSION_REQUIRED");
+      throw new AppError(409, "Personagem precisa ser enviado antes de preparar a imagem.", "CHARACTER_SUBMISSION_REQUIRED");
     }
 
-    const snapshot = approvedSubmission.characterSnapshot as Prisma.JsonObject;
-    const fields = this.buildPromptFields(snapshot, approvedSubmission.builderConfigVersion);
+    const campaignId = character.table?.publicCampaign?.id;
+    const survey = campaignId
+      ? await this.db.finalSurveyResponse.findUnique({
+          where: { userId_campaignId: { userId, campaignId } },
+          select: { id: true },
+        })
+      : null;
+    if (!survey) {
+      throw new AppError(409, "Conclua a pesquisa antes de preparar a imagem.", "FINAL_SURVEY_REQUIRED");
+    }
+
+    const snapshot = submittedSnapshot.characterSnapshot as Prisma.JsonObject;
+    const fields = this.buildPromptFields(snapshot, submittedSnapshot.builderConfigVersion);
     const prompt = this.interpolate(fields);
     this.assertNoForbidden(prompt);
 
@@ -131,7 +143,7 @@ export class CharacterCardArtService {
       userId,
       tableId,
       characterId,
-      contextVersionId: approvedSubmission.contextVersionId,
+      contextVersionId: submittedSnapshot.contextVersionId,
       promptVersion: CHARACTER_CARD_ART_PROMPT_VERSION,
       provider: "internal",
       model: "prompt-builder",
@@ -139,12 +151,12 @@ export class CharacterCardArtService {
 
     return {
       promptVersion: CHARACTER_CARD_ART_PROMPT_VERSION,
-      approvedSubmission: {
-        id: approvedSubmission.id,
-        sheetRevision: approvedSubmission.sheetRevision,
-        approvedAt: approvedSubmission.approvedAt,
-        builderConfigVersion: approvedSubmission.builderConfigVersion,
-        contextVersionId: approvedSubmission.contextVersionId,
+      sourceSubmission: {
+        id: submittedSnapshot.id,
+        sheetRevision: submittedSnapshot.sheetRevision,
+        approvedAt: submittedSnapshot.approvedAt,
+        builderConfigVersion: submittedSnapshot.builderConfigVersion,
+        contextVersionId: submittedSnapshot.contextVersionId,
       },
       useCase: "CHARACTER_CARD_ART_PROMPT",
       usageEventId: event.id,

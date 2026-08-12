@@ -11,6 +11,7 @@ import {
 } from "../ai/playerAi.controller";
 import {
   approveTableCharacter,
+  adaptLegacyTableCharacter,
   applyCharacterTraitSuggestion,
   createCharacterTrait,
   createCharacterTraitSuggestion,
@@ -21,6 +22,7 @@ import {
   createTable,
   createTimelineEvent,
   deleteCharacterTrait,
+  deletePilotTableCharacter,
   dismissCharacterTraitSuggestion,
   getMyTableCharacter,
   getTableCharacter,
@@ -59,6 +61,7 @@ import {
 } from "./table.controller";
 import {
   validateCreateTableInvitation,
+  validateDeletePilotCharacter,
   validateCreatePackage03Character,
   validateCreateCharacterTrait,
   validateCreateCharacterTraitSuggestion,
@@ -164,6 +167,15 @@ router.post(
   "/:tableId/characters/:characterId/approve",
   validate(validateReviewPackage03Character),
   approveTableCharacter
+);
+router.post(
+  "/:tableId/characters/:characterId/adapt-legacy",
+  adaptLegacyTableCharacter
+);
+router.delete(
+  "/:tableId/characters/:characterId",
+  validate(validateDeletePilotCharacter),
+  deletePilotTableCharacter
 );
 router.patch(
   "/:tableId/characters/:characterId/review",

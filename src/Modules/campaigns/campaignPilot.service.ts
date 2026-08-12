@@ -1,4 +1,6 @@
 import {
+  AccountRole,
+  CharacterSheetStatus,
   Prisma,
   PublicCampaignStatus,
   TableMemberRole,
@@ -34,6 +36,7 @@ export class CampaignPilotService {
   static async submitFinalSurvey(userId: string, slug: string, input: SubmitFinalSurveyInput) {
     const campaign = await this.requireSurveyCampaign(slug);
     await this.requireActivePlayer(userId, campaign.tableId);
+    await this.requireSubmittedCharacter(userId, campaign.tableId);
 
     const answers = {
       character_understanding_score: input.characterUnderstandingScore,
@@ -99,6 +102,31 @@ export class CampaignPilotService {
     });
 
     return response ? this.formatSurveyResponse(response) : null;
+  }
+
+  private static async requireSubmittedCharacter(userId: string, tableId: string) {
+    const character = await prisma.character.findFirst({
+      where: {
+        tableId,
+        userId,
+        submittedAt: { not: null },
+        sheetStatus: {
+          in: [
+            CharacterSheetStatus.SUBMITTED,
+            CharacterSheetStatus.CHANGES_REQUESTED,
+            CharacterSheetStatus.APPROVED,
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    if (!character) {
+      throw new AppError(
+        409,
+        "Envie seu personagem antes de responder a pesquisa.",
+        "CHARACTER_SUBMISSION_REQUIRED"
+      );
+    }
   }
 
   static async recordCampaignEvent(userId: string, slug: string, input: RecordAnalyticsEventInput) {
@@ -167,6 +195,7 @@ export class CampaignPilotService {
       analyticsGroups,
       latestAnalyticsEvents,
       dossierSubmissions,
+      participantRecords,
     ] = await prisma.$transaction([
       prisma.participantConsent.groupBy({
         by: ["status"],
@@ -246,6 +275,54 @@ export class CampaignPilotService {
           },
         },
       }),
+      prisma.tableMember.findMany({
+        where: { tableId: campaign.tableId },
+        orderBy: [{ joinedAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          role: true,
+          status: true,
+          joinedAt: true,
+          user: {
+            select: {
+              id: true,
+              nome: true,
+              email: true,
+              emailVerifiedAt: true,
+              participantConsents: {
+                where: { campaignId: campaign.id, consentVersion: campaign.consentVersion },
+                select: { status: true, acceptedAt: true },
+                take: 1,
+              },
+              characters: {
+                where: { tableId: campaign.tableId },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: 1,
+                select: {
+                  id: true,
+                  name: true,
+                  sheetStatus: true,
+                  sheetRevision: true,
+                  submittedAt: true,
+                  approvedAt: true,
+                  narrativeResponses: true,
+                  confirmedNarrativeContext: true,
+                  builderConfigVersion: true,
+                },
+              },
+              finalSurveyResponses: {
+                where: { campaignId: campaign.id },
+                select: { id: true, submittedAt: true },
+                take: 1,
+              },
+              playerAiSuggestions: {
+                where: { tableId: campaign.tableId },
+                select: { id: true },
+              },
+            },
+          },
+        },
+      }),
     ]);
 
     const formattedDossierSubmissions = dossierSubmissions.map((character) => ({
@@ -288,6 +365,40 @@ export class CampaignPilotService {
           status: group.status,
           count: aggregateCount(group),
         })),
+        items: participantRecords.map((membership) => {
+          const character = membership.user.characters[0] ?? null;
+          const consent = membership.user.participantConsents[0] ?? null;
+          const survey = membership.user.finalSurveyResponses[0] ?? null;
+          return {
+            membershipId: membership.id,
+            role: membership.role,
+            status: membership.status,
+            joinedAt: membership.joinedAt,
+            user: {
+              id: membership.user.id,
+              name: membership.user.nome,
+              email: membership.user.email,
+              emailVerified: Boolean(membership.user.emailVerifiedAt),
+            },
+            consent: consent
+              ? { status: consent.status, acceptedAt: consent.acceptedAt }
+              : null,
+            character: character
+              ? {
+                  id: character.id,
+                  name: character.name,
+                  sheetStatus: character.sheetStatus,
+                  sheetRevision: character.sheetRevision,
+                  submittedAt: character.submittedAt,
+                  approvedAt: character.approvedAt,
+                  legacy: !character.narrativeResponses || !character.confirmedNarrativeContext,
+                  builderConfigVersion: character.builderConfigVersion,
+                }
+              : null,
+            survey: survey ? { submittedAt: survey.submittedAt } : null,
+            aiSuggestionsCount: membership.user.playerAiSuggestions.length,
+          };
+        }),
       },
       consents: consentGroups.map((group) => ({
         status: group.status,
@@ -373,17 +484,17 @@ export class CampaignPilotService {
   }
 
   private static async requireActivePlayer(userId: string, tableId: string) {
-    const membership = await prisma.tableMember.findUnique({
-      where: {
-        tableId_userId: {
-          tableId,
-          userId,
-        },
-      },
-      select: { role: true, status: true },
-    });
+    const [membership, user] = await Promise.all([
+      prisma.tableMember.findUnique({
+        where: { tableId_userId: { tableId, userId } },
+        select: { role: true, status: true },
+      }),
+      prisma.user.findUnique({ where: { id: userId }, select: { accountRole: true } }),
+    ]);
 
-    if (membership?.role !== TableMemberRole.PLAYER || membership.status !== TableMemberStatus.ACTIVE) {
+    const participantRole =
+      membership?.role === TableMemberRole.PLAYER || user?.accountRole === AccountRole.ADMIN;
+    if (!participantRole || membership?.status !== TableMemberStatus.ACTIVE) {
       throw new AppError(403, "Pesquisa restrita ao PLAYER ativo da campanha.", "CAMPAIGN_PLAYER_REQUIRED");
     }
   }

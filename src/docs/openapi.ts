@@ -1832,7 +1832,7 @@ export const openApiDocument = {
         type: "object",
         properties: {
           promptVersion: { type: "string", enum: ["character-card-art-v1"] },
-          approvedSubmission: {
+          sourceSubmission: {
             type: "object",
             properties: {
               id: { type: "string" },
@@ -1850,7 +1850,7 @@ export const openApiDocument = {
           fields: { type: "object" },
           prompt: {
             type: "string",
-            description: "Prompt visual montado exclusivamente a partir da submissao aprovada.",
+            description: "Prompt visual montado exclusivamente a partir da ultima submissao do participante.",
           },
         },
       },
@@ -2393,6 +2393,20 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/v1/campaigns/admin/by-slug/{slug}": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Obter campanha do piloto por slug no modo administrativo",
+        description: "Somente ADMIN global. Inclui campanhas DRAFT, ACTIVE ou CLOSED para preservar a operacao apos o encerramento de novas entradas.",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        responses: {
+          "200": { description: "Campanha retornada" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
+    },
     "/api/v1/campaigns/admin/{campaignId}/operations": {
       get: {
         tags: ["Campaigns"],
@@ -2842,6 +2856,7 @@ export const openApiDocument = {
     "/api/v1/tables/{tableId}/characters/{characterId}": {
       get: { tags: ["Tables"], summary: "Obter personagem da mesa", description: "Dono le o proprio personagem. MASTER le personagens submetidos ou aprovados.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Personagem retornado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
       patch: { tags: ["Tables"], summary: "Atualizar rascunho de personagem", description: "Somente o PLAYER dono pode editar personagem em DRAFT ou CHANGES_REQUESTED. Campos sao validados contra a versao registrada no personagem.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterRequest" } } } }, responses: { "200": { description: "Rascunho atualizado" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+      delete: { tags: ["Tables"], summary: "Excluir personagem do piloto", description: "Somente ADMIN global. Exige motivo e registra um evento de auditoria.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["reason"], properties: { reason: { type: "string", minLength: 3, maxLength: 500 } } } } } }, responses: { "200": { description: "Personagem excluido" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/episode-answers": {
       patch: { tags: ["Tables"], summary: "Salvar respostas contextuais do Episodio 1", description: "Somente o PLAYER dono pode salvar respostas enquanto o personagem estiver editavel. O backend registra o snapshot da pergunta a partir do Builder pilot-v1.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/CharacterEpisodeAnswersRequest" } } } }, responses: { "200": { description: "Respostas salvas" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
@@ -2902,7 +2917,7 @@ export const openApiDocument = {
       post: {
         tags: ["Tables AI"],
         summary: "Preparar preview do prompt visual da carta",
-        description: "Somente PLAYER ativo dono do personagem. Usa exclusivamente approvedSubmission; nao gera imagem, nao aceita prompt livre e nao usa rascunho atual.",
+        description: "Somente o participante dono. Usa exclusivamente a ultima submissao e exige pesquisa concluida; prepara o parecer e o prompt, mas nao gera imagem enquanto provedor e armazenamento nao estiverem configurados.",
         security: authSecurity,
         parameters: [tableIdPathParam, characterIdPathParam],
         responses: {
@@ -2921,6 +2936,9 @@ export const openApiDocument = {
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/approve": {
       post: { tags: ["Tables"], summary: "Aprovar personagem submetido", description: "Somente MASTER ativo da mesa. Usa revisao esperada quando enviada para evitar aprovacao stale.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: false, content: { "application/json": { schema: { $ref: "#/components/schemas/Package03CharacterReviewRequest" } } } }, responses: { "200": { description: "Personagem aprovado" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/adapt-legacy": {
+      post: { tags: ["Tables"], summary: "Adaptar personagem legado ao modelo atual", description: "Somente ADMIN global. Preserva um snapshot do modelo anterior, cria os blocos narrativos revisaveis e volta a ficha para DRAFT sem confirmar conteudo automaticamente.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], responses: { "200": { description: "Personagem preparado para revisao" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" } } },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/review": {
       patch: { tags: ["Tables"], summary: "Revisar personagem da mesa", description: "Somente MASTER. Ao aprovar, cria evento automatico CHARACTER_APPROVED na timeline.", security: authSecurity, parameters: [tableIdPathParam, characterIdPathParam], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/TableCharacterReviewRequest" } } } }, responses: { "200": { description: "Review atualizada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } } },

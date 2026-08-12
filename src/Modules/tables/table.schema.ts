@@ -287,6 +287,11 @@ export const validateReviewPackage03Character = (req: Request): void => {
   req.body = parsed;
 };
 
+export const validateDeletePilotCharacter = (req: Request): void => {
+  const body = getBody(req);
+  req.body = { reason: requireString(body.reason, "reason", 3, 500) };
+};
+
 const parseCharacterSheetInput = (body: Record<string, unknown>): CharacterSheetInput => {
   assertForbiddenCharacterClientFields(body);
   return {
