@@ -11,3 +11,33 @@ export const previewCharacterCardArtPrompt = asyncHandler(async (req: Request, r
   const preview = await CharacterCardArtService.previewSubmittedCharacterArtPrompt(userId, tableId, characterId);
   sendSuccess(res, 200, { preview });
 });
+
+export const listCharacterCardArt = asyncHandler(async (req: Request, res: Response) => {
+  const result = await CharacterCardArtService.listGenerations(
+    requireUserId(req),
+    requireString(req.params.tableId, "tableId"),
+    requireString(req.params.characterId, "characterId")
+  );
+  sendSuccess(res, 200, { generations: result });
+});
+
+export const generateCharacterCardArt = asyncHandler(async (req: Request, res: Response) => {
+  const generation = await CharacterCardArtService.generate(
+    requireUserId(req),
+    requireString(req.params.tableId, "tableId"),
+    requireString(req.params.characterId, "characterId")
+  );
+  sendSuccess(res, 201, { generation }, "Imagem do personagem gerada com sucesso.");
+});
+
+export const getCharacterCardArtContent = asyncHandler(async (req: Request, res: Response) => {
+  const content = await CharacterCardArtService.getGenerationContent(
+    requireUserId(req),
+    requireString(req.params.tableId, "tableId"),
+    requireString(req.params.characterId, "characterId"),
+    requireString(req.params.generationId, "generationId")
+  );
+  res.setHeader("Content-Type", content.mimeType);
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.status(200).send(content.data);
+});
