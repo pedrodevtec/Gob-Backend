@@ -3,6 +3,7 @@ import { AiCostSource, AiPricingModality } from "@prisma/client";
 import { AiGateway } from "../ai.gateway";
 import { AiClient } from "../ai.client";
 import { AiPricingService } from "../ai.pricing.service";
+import { AiExchangeRateService } from "../ai.exchange-rate.service";
 import { AppError } from "../../../errors/AppError";
 
 type TestFn = () => void | Promise<void>;
@@ -82,6 +83,21 @@ void (async () => {
     assert.equal(cost.costMicrosUsd, undefined);
   });
 
+  await test("cotacao USD BRL usa PTAX mais recente e preserva fonte e data", async () => {
+    AiExchangeRateService.setFetchForTests((async () => ({
+      ok: true,
+      json: async () => ({
+        value: [{ cotacaoVenda: 5.4321, dataHoraCotacao: "2026-08-13 13:10:00.000" }],
+      }),
+    })) as any);
+
+    const rate = await AiExchangeRateService.getUsdBrlRate(new Date("2026-08-13T15:00:00.000Z"));
+    assert.equal(rate?.rate, 5.4321);
+    assert.equal(rate?.date, "2026-08-13");
+    assert.equal(rate?.source, "Banco Central do Brasil - PTAX venda");
+    AiExchangeRateService.resetForTests();
+  });
+
   await test("AiUsageEvent registra sucesso falha e requestId impede dupla contabilizacao", async () => {
     const db = createDb({
       version: "test-price-v1",
@@ -150,6 +166,7 @@ void (async () => {
   AiClient.generateStructuredWithUsage = originalGenerate;
   AiGateway.resetDbForTests();
   AiPricingService.resetDbForTests();
+  AiExchangeRateService.resetForTests();
 
   if (process.exitCode) {
     process.exit(process.exitCode);
