@@ -1,3 +1,5 @@
+BEGIN;
+
 ALTER TYPE "AiUseCase" ADD VALUE IF NOT EXISTS 'CHARACTER_CARD_ART_GENERATION';
 
 CREATE TABLE "CharacterCardArtGeneration" (
@@ -7,7 +9,7 @@ CREATE TABLE "CharacterCardArtGeneration" (
     "userId" TEXT NOT NULL,
     "tableId" TEXT NOT NULL,
     "attemptNumber" INTEGER NOT NULL,
-    "status" "AiUsageStatus" NOT NULL DEFAULT 'PENDING',
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
     "promptVersion" TEXT NOT NULL,
     "prompt" TEXT NOT NULL,
     "provider" TEXT,
@@ -46,3 +48,5 @@ FOREIGN KEY ("tableId") REFERENCES "Table"("id") ON DELETE CASCADE ON UPDATE CAS
 ALTER TABLE "CharacterCardArtGeneration"
 ADD CONSTRAINT "CharacterCardArtGeneration_aiUsageEventId_fkey"
 FOREIGN KEY ("aiUsageEventId") REFERENCES "AiUsageEvent"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+COMMIT;
