@@ -58,16 +58,8 @@ export class TableCharacterPackage03Service {
       throw new AppError(403, "Somente PLAYER ativo pode criar personagem proprio.", "TABLE_PLAYER_REQUIRED");
     }
 
-    const [legacyClass, table] = await Promise.all([
-      this.findLegacyClassForDraft(),
-      this.db.table.findUnique({
-        where: { id: tableId },
-        select: { publicCampaign: { select: { builderConfigVersion: true } } },
-      }),
-    ]);
-    const builderConfigVersion =
-      table?.publicCampaign?.builderConfigVersion ?? BuilderService.getActiveConfig().version;
-    BuilderService.getConfig(builderConfigVersion);
+    const legacyClass = await this.findLegacyClassForDraft();
+    const builderConfigVersion = BuilderService.getActiveConfig().version;
     const data = this.normalizeSheetData(input, { partial: true, builderConfigVersion });
     const character = await this.db.character.create({
       data: {
@@ -88,11 +80,19 @@ export class TableCharacterPackage03Service {
 
   static async getMyCharacter(userId: string, tableId: string) {
     await TableAuthorizationService.requireTableMember(tableId, userId);
-    const character = await this.db.character.findFirst({
+    let character = await this.db.character.findFirst({
       where: { tableId, userId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: characterInclude,
     });
+
+    if (character && this.isUnstartedOutdatedDraft(character)) {
+      character = await this.db.character.update({
+        where: { id: character.id },
+        data: { builderConfigVersion: BuilderService.getActiveConfig().version },
+        include: characterInclude,
+      });
+    }
 
     return character ? this.formatCharacter(character) : null;
   }
@@ -607,6 +607,54 @@ export class TableCharacterPackage03Service {
     return value && typeof value === "object" && !Array.isArray(value)
       ? value as Record<string, unknown>
       : {};
+  }
+
+  private static isUnstartedOutdatedDraft(
+    character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>
+  ): boolean {
+    const activeVersion = BuilderService.getActiveConfig().version;
+    const textFields = [
+      character.name,
+      character.concept,
+      character.origin,
+      character.appearance,
+      character.desire,
+      character.fear,
+      character.promiseOrGuilt,
+      character.reasonToActWithGroup,
+      character.markLocation,
+      character.markAppearance,
+      character.markReaction,
+      character.markAttitude,
+      character.narrativeBond,
+      character.personalHistory,
+      character.playStylePreference,
+    ];
+    const jsonFields = [
+      character.attributes,
+      character.trainings,
+      character.positiveTrait,
+      character.negativeTrait,
+      character.initialEquipment,
+      character.creativeDossier,
+      character.narrativeResponses,
+      character.confirmedNarrativeContext,
+    ];
+
+    return (
+      character.builderConfigVersion !== activeVersion &&
+      character.sheetStatus === CharacterSheetStatus.DRAFT &&
+      character.sheetRevision === 1 &&
+      character.submittedAt === null &&
+      character.approvedAt === null &&
+      textFields.every((value) => value === null || value.trim() === "") &&
+      character.archetypeKey === null &&
+      jsonFields.every((value) => value === null) &&
+      character.episodeAnswers.length === 0 &&
+      character.reviews.length === 0 &&
+      character.reviewEvents.length === 0 &&
+      character.submissionSnapshots.length === 0
+    );
   }
 
   private static normalizeSheetData(
