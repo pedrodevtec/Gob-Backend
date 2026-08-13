@@ -58,6 +58,10 @@ export const env = {
   AI_API_KEY: process.env.OPENAI_API_KEY || process.env.AI_API_KEY || "",
   AI_MODEL: process.env.AI_MODEL ?? "gpt-5-nano",
   AI_IMAGE_MODEL: process.env.AI_IMAGE_MODEL ?? "gpt-image-1.5",
+  AI_USD_BRL_RATE: process.env.AI_USD_BRL_RATE
+    ? Number(process.env.AI_USD_BRL_RATE)
+    : undefined,
+  AI_USD_BRL_RATE_DATE: process.env.AI_USD_BRL_RATE_DATE,
   RESEND_API_KEY: optionalProductionEnv("RESEND_API_KEY"),
   EMAIL_FROM: optionalProductionEnv("EMAIL_FROM"),
   APP_WEB_URL: optionalProductionEnv("APP_WEB_URL") || "http://localhost:3000",
