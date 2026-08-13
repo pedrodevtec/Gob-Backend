@@ -1,5 +1,6 @@
 import { AiUseCase, AiUsageStatus, Prisma } from "@prisma/client";
 import prisma from "../../config/db";
+import { AiExchangeRateService } from "../ai/ai.exchange-rate.service";
 
 export interface AiUsageFilters {
   dateFrom?: Date;
@@ -18,7 +19,7 @@ const toStringNumber = (value: bigint | number | null | undefined): string | nul
 export class AdminAiUsageService {
   static async summary(filters: AiUsageFilters) {
     const where = this.where(filters);
-    const [aggregate, totalCalls, successfulCalls, failedCalls, unpricedCalls, decisions] =
+    const [aggregate, totalCalls, successfulCalls, failedCalls, pricedCalls, unpricedCalls, decisions, exchangeRate] =
       await Promise.all([
         prisma.aiUsageEvent.aggregate({
           where,
@@ -36,7 +37,8 @@ export class AdminAiUsageService {
         prisma.aiUsageEvent.count({ where }),
         prisma.aiUsageEvent.count({ where: { ...where, status: "SUCCESS" } }),
         prisma.aiUsageEvent.count({ where: { ...where, status: "ERROR" } }),
-        prisma.aiUsageEvent.count({ where: { ...where, costMicrosUsd: null } }),
+        prisma.aiUsageEvent.count({ where: { ...where, costMicrosUsd: { not: null } } }),
+        prisma.aiUsageEvent.count({ where: { ...where, costSource: "UNPRICED" } }),
         prisma.playerAiSuggestion.groupBy({
           by: ["status"],
           where: {
@@ -46,13 +48,22 @@ export class AdminAiUsageService {
           },
           _count: { _all: true },
         }),
+        AiExchangeRateService.getUsdBrlRate(),
       ]);
 
     const totalCost = aggregate._sum.costMicrosUsd ?? null;
+    const totalCostUsd = totalCost === null ? null : Number(totalCost) / 1_000_000;
     return {
       period: this.period(filters),
       currency: "USD",
-      brl: null,
+      brl: exchangeRate && totalCostUsd !== null
+        ? {
+            amount: Number((totalCostUsd * exchangeRate.rate).toFixed(6)),
+            rate: exchangeRate.rate,
+            date: exchangeRate.date,
+            source: exchangeRate.source,
+          }
+        : null,
       totalCalls,
       successfulCalls,
       failedCalls,
@@ -63,7 +74,7 @@ export class AdminAiUsageService {
       totalCostMicrosUsd: toStringNumber(totalCost),
       unpricedCalls,
       averageCostMicrosUsd:
-        totalCost !== null && totalCalls > 0 ? (totalCost / BigInt(totalCalls)).toString() : null,
+        totalCost !== null && pricedCalls > 0 ? (totalCost / BigInt(pricedCalls)).toString() : null,
       averageLatencyMs: aggregate._avg.latencyMs ?? null,
       acceptedSuggestions: this.decisionCount(decisions, "ACCEPTED"),
       editedSuggestions: this.decisionCount(decisions, "EDITED"),

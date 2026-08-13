@@ -1760,7 +1760,16 @@ export const openApiDocument = {
         properties: {
           period: { type: "object" },
           currency: { type: "string", enum: ["USD"] },
-          brl: { nullable: true },
+          brl: {
+            type: "object",
+            nullable: true,
+            properties: {
+              amount: { type: "number" },
+              rate: { type: "number" },
+              date: { type: "string", format: "date" },
+              source: { type: "string" },
+            },
+          },
           totalCalls: { type: "integer" },
           successfulCalls: { type: "integer" },
           failedCalls: { type: "integer" },
