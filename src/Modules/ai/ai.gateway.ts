@@ -17,7 +17,8 @@ export type AiGatewayUseCase =
   | "PLAYER_CHARACTER_VALIDATION"
   | "CHARACTER_CHAPTER_SUGGESTION"
   | "CHARACTER_FIELD_REFINEMENT"
-  | "CHARACTER_CARD_ART_PROMPT";
+  | "CHARACTER_CARD_ART_PROMPT"
+  | "CHARACTER_CARD_ART_GENERATION";
 
 export interface AiGatewayRequest<T> {
   requestId?: string;
@@ -119,6 +120,7 @@ export class AiGateway {
     latencyMs?: number;
     status?: AiUsageStatus;
     errorCode?: string;
+    imageCount?: number;
   }) {
     return this.recordUsage({
       requestId: input.requestId ?? crypto.randomUUID(),
@@ -133,6 +135,7 @@ export class AiGateway {
       latencyMs: input.latencyMs ?? 0,
       status: input.status ?? AiUsageStatus.SUCCESS,
       errorCode: input.errorCode,
+      imageCount: input.imageCount,
       schemaName: "internal_event",
       schema: {},
       instructions: "",

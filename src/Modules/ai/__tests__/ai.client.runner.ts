@@ -84,6 +84,26 @@ void (async () => {
     assert.deepEqual(requestBody?.reasoning, { effort: "minimal" });
   });
 
+  await test("gera uma unica imagem vertical e decodifica o conteudo da carta", async () => {
+    env.AI_API_KEY = "test-key";
+    let requestBody: Record<string, unknown> | undefined;
+    global.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({ data: [{ b64_json: Buffer.from("card-image").toString("base64") }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await AiClient.generateImage({ prompt: "Personagem confirmado", model: "gpt-image-test" });
+
+    assert.equal(result.data.toString(), "card-image");
+    assert.equal(result.mimeType, "image/webp");
+    assert.equal(requestBody?.n, 1);
+    assert.equal(requestBody?.size, "1024x1536");
+    assert.equal(requestBody?.output_format, "webp");
+  });
+
   await test("exige characterId para sugestoes de traits", async () => {
     const req = { body: { instruction: "Sugira traits." } } as any;
 

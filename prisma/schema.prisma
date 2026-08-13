@@ -224,6 +224,7 @@ enum AiUseCase {
   CHARACTER_CHAPTER_SUGGESTION
   CHARACTER_FIELD_REFINEMENT
   CHARACTER_CARD_ART_PROMPT
+  CHARACTER_CARD_ART_GENERATION
 }
 
 enum AiUsageStatus {
@@ -283,6 +284,7 @@ model User {
   finalSurveyResponses    FinalSurveyResponse[]       @relation("FinalSurveyResponseUser")
   analyticsEvents         AnalyticsEvent[]            @relation("AnalyticsEventUser")
   characterLegacyAdaptations CharacterLegacyAdaptation[] @relation("CharacterLegacyAdaptationAdmin")
+  characterCardArtGenerations CharacterCardArtGeneration[]
 }
 
 model EmailVerificationToken {
@@ -475,6 +477,7 @@ model Character {
   legacyAdaptation        CharacterLegacyAdaptation?
   tableMissionSubmissions TableMissionSubmission[]
   timelineEvents          TableTimelineEvent[]
+  cardArtGenerations      CharacterCardArtGeneration[]
 
   @@index([tableId, createdAt])
   @@index([tableId, userId, sheetStatus, createdAt])
@@ -873,6 +876,7 @@ model Table {
   aiUsageEvents        AiUsageEvent[]
   finalSurveyResponses FinalSurveyResponse[]
   analyticsEvents      AnalyticsEvent[]
+  characterCardArtGenerations CharacterCardArtGeneration[]
 
   @@index([masterId, createdAt])
   @@index([settingId, episodeId, status, createdAt])
@@ -1168,12 +1172,43 @@ model CharacterSubmissionSnapshot {
   submittedBy User          @relation("CharacterSubmissionSnapshotSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
   contextVersion ContextVersion @relation(fields: [contextVersionId], references: [id], onDelete: Restrict)
   approvedBy User?         @relation("CharacterSubmissionSnapshotApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  cardArtGenerations CharacterCardArtGeneration[]
 
   @@unique([characterId, sheetRevision])
   @@index([characterId, submittedAt])
   @@index([submittedById, submittedAt])
   @@index([contextVersionId])
   @@index([approvedById, approvedAt])
+}
+
+model CharacterCardArtGeneration {
+  id                   String   @id @default(uuid())
+  characterId          String
+  submissionSnapshotId String
+  userId               String
+  tableId              String
+  attemptNumber        Int
+  status               String   @default("PENDING")
+  promptVersion        String
+  prompt               String   @db.Text
+  provider             String?
+  model                String?
+  mimeType             String?
+  imageData            Bytes?
+  aiUsageEventId       String?
+  errorCode            String?
+  createdAt            DateTime @default(now())
+  completedAt          DateTime?
+
+  character          Character                   @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  submissionSnapshot CharacterSubmissionSnapshot @relation(fields: [submissionSnapshotId], references: [id], onDelete: Cascade)
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  table              Table                       @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, attemptNumber])
+  @@index([userId, createdAt])
+  @@index([tableId, createdAt])
+  @@index([submissionSnapshotId])
 }
 
 model CharacterReviewEvent {

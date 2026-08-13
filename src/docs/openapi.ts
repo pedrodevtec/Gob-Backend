@@ -1844,14 +1844,29 @@ export const openApiDocument = {
           },
           useCase: { type: "string", enum: ["CHARACTER_CARD_ART_PROMPT"] },
           usageEventId: { type: "string" },
-          provider: { nullable: true },
-          storage: { nullable: true },
+          provider: { type: "string", enum: ["openai"] },
+          storage: { type: "string", enum: ["database"] },
+          generationLimit: { type: "integer", enum: [1] },
           pending: { type: "array", items: { type: "string" } },
           fields: { type: "object" },
           prompt: {
             type: "string",
             description: "Prompt visual montado exclusivamente a partir da ultima submissao do participante.",
           },
+        },
+      },
+      CharacterCardArtGeneration: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          attemptNumber: { type: "integer", minimum: 1, maximum: 1 },
+          promptVersion: { type: "string" },
+          provider: { type: "string", nullable: true },
+          model: { type: "string", nullable: true },
+          mimeType: { type: "string", enum: ["image/png", "image/jpeg", "image/webp"], nullable: true },
+          imagePath: { type: "string" },
+          createdAt: { type: "string", format: "date-time" },
+          completedAt: { type: "string", format: "date-time", nullable: true },
         },
       },
       TableWorldRequest: {
@@ -2917,7 +2932,7 @@ export const openApiDocument = {
       post: {
         tags: ["Tables AI"],
         summary: "Preparar preview do prompt visual da carta",
-        description: "Somente o participante dono. Usa exclusivamente a ultima submissao e exige pesquisa concluida; prepara o parecer e o prompt, mas nao gera imagem enquanto provedor e armazenamento nao estiverem configurados.",
+        description: "Somente o participante dono. Usa exclusivamente a ultima submissao e exige pesquisa concluida; prepara o parecer e o prompt visual antes da geracao opcional.",
         security: authSecurity,
         parameters: [tableIdPathParam, characterIdPathParam],
         responses: {
@@ -2926,6 +2941,33 @@ export const openApiDocument = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
         },
+      },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/card-art": {
+      get: {
+        tags: ["Tables AI"],
+        summary: "Listar imagens geradas para a carta",
+        description: "Somente o participante dono. Retorna a carta persistida da conta para o personagem e informa se a geracao ainda esta disponivel.",
+        security: authSecurity,
+        parameters: [tableIdPathParam, characterIdPathParam],
+        responses: { "200": { description: "Galeria retornada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+      post: {
+        tags: ["Tables AI"],
+        summary: "Gerar uma imagem da carta",
+        description: "Gera a carta da conta a partir do prompt confirmado, sem depender da aprovacao do Mestre, com limite de uma imagem por personagem.",
+        security: authSecurity,
+        parameters: [tableIdPathParam, characterIdPathParam],
+        responses: { "201": { description: "Imagem gerada", content: { "application/json": { schema: { type: "object", properties: { generation: { $ref: "#/components/schemas/CharacterCardArtGeneration" } } } } } }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" }, "429": { description: "Rate limit excedido" }, "503": { description: "Geracao de imagem indisponivel" } },
+      },
+    },
+    "/api/v1/tables/{tableId}/characters/{characterId}/card-art/{generationId}/content": {
+      get: {
+        tags: ["Tables AI"],
+        summary: "Baixar imagem gerada da carta",
+        security: authSecurity,
+        parameters: [tableIdPathParam, characterIdPathParam, { name: "generationId", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "Conteudo binario da imagem" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
       },
     },
     "/api/v1/tables/{tableId}/characters/{characterId}/reviews": {

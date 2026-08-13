@@ -89,7 +89,12 @@ import {
   validateCharacterMechanicalProposal,
   validateDecidePlayerAiSuggestion,
 } from "../ai/playerAi.schema";
-import { previewCharacterCardArtPrompt } from "../cards/characterCardArt.controller";
+import {
+  generateCharacterCardArt,
+  getCharacterCardArtContent,
+  listCharacterCardArt,
+  previewCharacterCardArtPrompt,
+} from "../cards/characterCardArt.controller";
 
 const router = Router();
 const characterAiRateLimiter = createRateLimiter(12, 60_000, {
@@ -141,6 +146,19 @@ router.post(
   characterAiRateLimiter,
   validate(validateCharacterChapterSuggestions),
   suggestCharacterChapter
+);
+router.get(
+  "/:tableId/characters/:characterId/card-art",
+  listCharacterCardArt
+);
+router.post(
+  "/:tableId/characters/:characterId/card-art",
+  characterAiRateLimiter,
+  generateCharacterCardArt
+);
+router.get(
+  "/:tableId/characters/:characterId/card-art/:generationId/content",
+  getCharacterCardArtContent
 );
 router.post(
   "/:tableId/characters/:characterId/ai/mechanical-proposal",
