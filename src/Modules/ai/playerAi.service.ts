@@ -13,6 +13,7 @@ import { CampaignPilotService } from "../campaigns/campaignPilot.service";
 import { TableService } from "../tables/table.service";
 import { AiContextService } from "./ai.context.service";
 import { AiGateway } from "./ai.gateway";
+import { assessNarrativeInput } from "./ai.narrative-input";
 import {
   characterChapterSuggestionsOutputSchema,
   characterMechanicalProposalOutputSchema,
@@ -38,7 +39,7 @@ const PLAYER_ASSISTANT_INSTRUCTIONS = [
   "Cada sugestao deve orientar o jogador a aceitar, editar ou descartar.",
 ].join(" ");
 
-const CHARACTER_CHAPTER_PROMPT_VERSION = "character-chapter-v1";
+const CHARACTER_CHAPTER_PROMPT_VERSION = "character-chapter-v2";
 const CHARACTER_MECHANICS_PROMPT_VERSION = "character-mechanics-v1";
 const MAX_CHAPTER_SUGGESTIONS = 3;
 
@@ -47,6 +48,12 @@ const CHAPTER_ASSISTANT_INSTRUCTIONS = [
   "A IA sugere. O Mestre decide. O jogador personaliza. A plataforma registra.",
   "Responda em portugues do Brasil.",
   "Sugira conteudo apenas para os campos solicitados.",
+  "Respostas curtas do jogador sao validas e nunca devem ser tratadas como erro.",
+  "Comece sempre pelo que o jogador escreveu. Use o contexto publico apenas para ajustar tom, vocabulario e compatibilidade com Guardian of Bravantus.",
+  "Nao conecte automaticamente o personagem a pessoas, lugares ou acontecimentos especificos do episodio. Deixe um gancho aberto para o Mestre desenvolver durante a mesa.",
+  "Quando faltar informacao, ofereca uma hipotese pequena, claramente editavel e sem nomes ou fatos novos.",
+  "Em toda a resposta, faca no maximo uma pergunta complementar e coloque-a na justificativa da sugestao que mais precisa de contexto.",
+  "O resultado deve ajudar a criar uma pessoa marcada, com motivacao propria, vinculos e espaco para escolhas durante a aventura.",
   "Nao altere ficha, nao canonize fatos e nao revele ou invente segredos.",
   "Rationale deve ser curta e citar somente tipos de informacao autorizada.",
   "basedOn deve conter apenas nomes de campos, nunca conteudo.",
@@ -219,6 +226,10 @@ export class PlayerAiService {
         targetChapter: input.targetChapter,
         targetFields: authorized.targetFields,
         playerIntent: input.playerIntent ?? null,
+        narrativeInputAssessment: assessNarrativeInput(
+          authorized.context.character.narrativeResponses
+        ),
+        experiencePurpose: authorized.context.experiencePurpose,
         authorizedContext: authorized.context,
       }),
     });
