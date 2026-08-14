@@ -1751,7 +1751,7 @@ export const openApiDocument = {
             items: { $ref: "#/components/schemas/CharacterChapterSuggestion" },
           },
           characterRevision: { type: "integer" },
-          promptVersion: { type: "string", enum: ["character-chapter-v1"] },
+          promptVersion: { type: "string", enum: ["character-chapter-v2"] },
           cached: { type: "boolean" },
         },
       },

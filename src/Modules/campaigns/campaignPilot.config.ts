@@ -1,47 +1,47 @@
-export const FINAL_SURVEY_VERSION = "pilot-v1";
+export const FINAL_SURVEY_VERSION = "pilot-v2";
 export const ANALYTICS_METADATA_VERSION = "pilot-v1";
 
 export const FINAL_SURVEY_QUESTIONS = [
   {
     questionKey: "character_understanding_score",
-    prompt: "Voce entendeu quem era seu personagem e por que ele participaria do episodio?",
+    prompt: "Ao terminar, voce conseguiu explicar quem e seu personagem e o que o move?",
     format: "SCALE_1_5",
     required: true,
   },
   {
     questionKey: "creation_experience_score",
-    prompt: "A criacao pareceu uma experiencia de jogo ou apenas um formulario?",
+    prompt: "Voce conseguiu avancar pela criacao sem ficar perdido ou sem saber o que responder?",
     format: "SCALE_1_5_FORM_TO_GAME",
     required: true,
   },
   {
     questionKey: "ai_helpfulness_score",
-    prompt: "A IA fez perguntas uteis e respeitou suas escolhas?",
+    prompt: "A ajuda criativa transformou suas ideias em sugestoes que voce conseguiu entender e avaliar?",
     format: "SCALE_1_5_OR_NOT_USED",
     required: true,
   },
   {
     questionKey: "ai_boundary_problem",
-    prompt: "Em algum momento a IA sugeriu algo que parecia spoiler, obrigatorio ou fora do setting?",
+    prompt: "Em algum momento a ajuda criativa trouxe algo como definitivo ou tentou decidir por voce?",
     format: "BOOLEAN",
     required: true,
   },
   {
     questionKey: "ai_boundary_problem_details",
-    prompt: "Se sim, conte brevemente o que aconteceu.",
+    prompt: "O que a ajuda sugeriu e por que isso nao combinou com sua escolha?",
     format: "OPTIONAL_TEXT",
     required: false,
     conditionalOn: "ai_boundary_problem",
   },
   {
     questionKey: "story_impact_score",
-    prompt: "Voce percebeu como suas decisoes poderiam entrar na historia da mesa?",
+    prompt: "A ficha deixou ganchos que o Mestre podera aproveitar durante a aventura?",
     format: "SCALE_1_5",
     required: true,
   },
   {
     questionKey: "final_comment",
-    prompt: "Deseja deixar alguma dificuldade, erro ou sugestao?",
+    prompt: "Qual foi a principal dificuldade ou melhoria que voce gostaria de ver?",
     format: "OPTIONAL_TEXT",
     required: false,
   },
