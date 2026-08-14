@@ -7,8 +7,13 @@ import {
   TableMemberRole,
 } from "@prisma/client";
 import defaultPrisma from "../../config/db";
+import { env } from "../../config/env";
 import { AppError } from "../../errors/AppError";
 import { BuilderService } from "../builder/builder.service";
+import {
+  PlaytestNotificationKind,
+  sendPlaytestNotificationSafely,
+} from "../notifications/playtestNotification.sender";
 import { TableAuthorizationService } from "./tableAuthorization.service";
 import {
   CharacterEpisodeAnswerInput,
@@ -31,7 +36,7 @@ const characterInclude = {
   table: {
     select: {
       contextVersionId: true,
-      publicCampaign: { select: { builderConfigVersion: true } },
+      publicCampaign: { select: { builderConfigVersion: true, title: true } },
     },
   },
   reviews: { orderBy: { updatedAt: "desc" }, take: 1 },
@@ -214,6 +219,7 @@ export class TableCharacterPackage03Service {
       return updated;
     });
 
+    await this.notifyCharacterOwner(character, "CHARACTER_SUBMITTED");
     return this.formatCharacter(character);
   }
 
@@ -468,7 +474,36 @@ export class TableCharacterPackage03Service {
       return tx.character.findUniqueOrThrow({ where: { id: input.characterId }, include: characterInclude });
     });
 
+    await this.notifyCharacterOwner(
+      result,
+      input.action === CharacterReviewAction.APPROVED
+        ? "CHARACTER_APPROVED"
+        : "CHARACTER_CHANGES_REQUESTED",
+      input.reason
+    );
     return this.formatCharacter(result);
+  }
+
+  private static async notifyCharacterOwner(
+    character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>,
+    kind: PlaytestNotificationKind,
+    masterFeedback?: string
+  ): Promise<void> {
+    const campaign = character.table?.publicCampaign;
+    if (!campaign || !character.user.email) {
+      return;
+    }
+
+    const baseUrl = env.APP_WEB_URL.replace(/\/$/, "");
+    await sendPlaytestNotificationSafely({
+      kind,
+      to: character.user.email,
+      playerName: character.user.nome,
+      characterName: character.name || "seu personagem",
+      campaignTitle: campaign.title,
+      actionUrl: `${baseUrl}/dashboard`,
+      masterFeedback,
+    });
   }
 
   private static async requireAdminAccount(userId: string) {
