@@ -419,6 +419,16 @@ export class AiContextService {
       targetChapter: input.targetChapter,
       targetFields: normalizedFields,
       playerIntent: input.playerIntent ?? null,
+      experiencePurpose: {
+        game: "Guardian of Bravantus",
+        playerGoal: "Criar uma pessoa marcada com identidade, motivacao, vinculos e escolhas proprias.",
+        masterGoal: "Receber ganchos abertos para conectar o personagem a aventura sem transformar sugestoes em fatos obrigatorios.",
+        boundaries: [
+          "Nao exigir ligacao previa com pessoas, lugares ou acontecimentos especificos do episodio.",
+          "Nao resolver o arco do personagem durante a criacao.",
+          "Nao substituir a decisao do jogador ou do Mestre.",
+        ],
+      },
       table: { id: table.id, name: table.name },
       contextVersion: {
         id: table.contextVersion.id,
