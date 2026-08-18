@@ -1840,7 +1840,9 @@ export const openApiDocument = {
       CharacterCardArtPromptPreview: {
         type: "object",
         properties: {
-          promptVersion: { type: "string", enum: ["character-card-art-v1"] },
+          variant: { type: "string", enum: ["PORTRAIT", "PLAYABLE_CARD"] },
+          briefing: { type: "string", maxLength: 240 },
+          promptVersion: { type: "string", enum: ["character-card-art-v1", "character-full-art-card-v1"] },
           sourceSubmission: {
             type: "object",
             properties: {
@@ -1856,6 +1858,7 @@ export const openApiDocument = {
           provider: { type: "string", enum: ["openai"] },
           storage: { type: "string", enum: ["database"] },
           generationLimit: { type: "integer", enum: [1] },
+          totalGenerationLimit: { type: "integer", enum: [2] },
           pending: { type: "array", items: { type: "string" } },
           fields: { type: "object" },
           prompt: {
@@ -1868,7 +1871,9 @@ export const openApiDocument = {
         type: "object",
         properties: {
           id: { type: "string" },
-          attemptNumber: { type: "integer", minimum: 1, maximum: 1 },
+          attemptNumber: { type: "integer", minimum: 1, maximum: 2 },
+          variant: { type: "string", enum: ["PORTRAIT", "PLAYABLE_CARD"] },
+          briefing: { type: "string", nullable: true, maxLength: 240 },
           promptVersion: { type: "string" },
           provider: { type: "string", nullable: true },
           model: { type: "string", nullable: true },
@@ -2944,6 +2949,19 @@ export const openApiDocument = {
         description: "Somente o participante dono. Usa exclusivamente a ultima submissao e exige pesquisa concluida; prepara o parecer e o prompt visual antes da geracao opcional.",
         security: authSecurity,
         parameters: [tableIdPathParam, characterIdPathParam],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  variant: { type: "string", enum: ["PORTRAIT", "PLAYABLE_CARD"], default: "PORTRAIT" },
+                },
+              },
+            },
+          },
+        },
         responses: {
           "200": { description: "Preview retornado", content: { "application/json": { schema: { type: "object", properties: { success: { type: "boolean" }, preview: { $ref: "#/components/schemas/CharacterCardArtPromptPreview" } } } } } },
           "403": { $ref: "#/components/responses/Forbidden" },
@@ -2956,7 +2974,7 @@ export const openApiDocument = {
       get: {
         tags: ["Tables AI"],
         summary: "Listar imagens geradas para a carta",
-        description: "Somente o participante dono. Retorna a carta persistida da conta para o personagem e informa se a geracao ainda esta disponivel.",
+        description: "Somente o participante dono. Retorna o retrato e a carta full art persistidos, com um limite independente para cada formato.",
         security: authSecurity,
         parameters: [tableIdPathParam, characterIdPathParam],
         responses: { "200": { description: "Galeria retornada" }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } },
@@ -2964,9 +2982,22 @@ export const openApiDocument = {
       post: {
         tags: ["Tables AI"],
         summary: "Gerar uma imagem da carta",
-        description: "Gera a carta da conta a partir do prompt confirmado, sem depender da aprovacao do Mestre, com limite de uma imagem por personagem.",
+        description: "Gera o formato solicitado a partir da ficha confirmada. Cada personagem pode ter um retrato e uma carta full art.",
         security: authSecurity,
         parameters: [tableIdPathParam, characterIdPathParam],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  variant: { type: "string", enum: ["PORTRAIT", "PLAYABLE_CARD"], default: "PORTRAIT" },
+                },
+              },
+            },
+          },
+        },
         responses: { "201": { description: "Imagem gerada", content: { "application/json": { schema: { type: "object", properties: { generation: { $ref: "#/components/schemas/CharacterCardArtGeneration" } } } } } }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/Conflict" }, "429": { description: "Rate limit excedido" }, "503": { description: "Geracao de imagem indisponivel" } },
       },
     },
