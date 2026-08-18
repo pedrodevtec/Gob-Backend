@@ -10,8 +10,11 @@ import { AiClient } from "../ai/ai.client";
 type CardArtDb = typeof defaultPrisma;
 
 export const CHARACTER_CARD_ART_PROMPT_VERSION = "character-card-art-v1";
+export const CHARACTER_FULL_ART_CARD_PROMPT_VERSION = "character-full-art-card-v1";
 
-const CARD_ART_TEMPLATE = `Crie exclusivamente a ilustracao de um personagem para uma carta de Guardian of Bravantus. Nao desenhe moldura, logotipo, numeros, letras ou textos.
+export type CharacterCardArtVariant = "PORTRAIT" | "PLAYABLE_CARD";
+
+const PORTRAIT_ART_TEMPLATE = `Crie exclusivamente a ilustracao de um personagem para uma carta de Guardian of Bravantus. Nao desenhe moldura, logotipo, numeros, letras ou textos.
 
 PERSONAGEM
 
@@ -55,6 +58,49 @@ Personagem como foco principal, silhueta legivel e fundo narrativo discreto.
 Nao inventar simbolos, poderes, equipamentos ou detalhes nao sustentados pelas informacoes fornecidas.
 Nao incluir texto, assinatura, marca d'agua, moldura ou interface.`;
 
+const FULL_ART_CARD_TEMPLATE = `Crie exclusivamente a arte full art vertical de um personagem para uma carta jogavel de Guardian of Bravantus. Nao desenhe moldura, logotipo, numeros, letras ou textos: a interface acrescentara essas informacoes depois.
+
+PERSONAGEM
+
+Nome de referencia, nao escrever na imagem:
+{{name}}
+
+Conceito:
+{{concept}}
+
+Origem:
+{{origin}}
+
+Aparencia fisica:
+{{appearance}}
+
+Arquetipo:
+{{archetypeName}}
+
+Marca:
+* Local: {{markLocation}}
+* Aparencia: {{markAppearance}}
+* Reacao visual: {{markReaction}}
+
+Caracteristicas:
+* Trait positiva: {{positiveTrait}}
+* Trait negativa: {{negativeTrait}}
+
+Equipamentos visiveis:
+{{equipmentSummary}}
+
+DIRECAO VISUAL
+
+Fantasia heroica medieval autoral, detalhada e cinematografica.
+Atmosfera antiga, protetora, mistica e levemente melancolica.
+Paleta de verde profundo, dourado envelhecido, marrom escuro, cinza de tempestade e luzes discretas relacionadas a Marca.
+Composicao vertical full bleed, proporcao 63 x 88 mm, sem moldura.
+Personagem como foco principal na metade superior e no centro.
+Reserve o quarto inferior com fundo mais escuro, calmo e de baixo detalhe para receber nome e um resumo curto em branco na montagem da carta.
+Mantenha rosto, Marca e equipamento principal fora da area reservada ao texto.
+Nao inventar simbolos, poderes, equipamentos ou detalhes nao sustentados pelas informacoes fornecidas.
+Nao incluir texto, assinatura, marca d'agua, moldura, interface, icones ou numeros.`;
+
 const FORBIDDEN_MARKERS = [
   "gm_secret",
   "SECRET_CANON",
@@ -76,7 +122,16 @@ export class CharacterCardArtService {
     this.db = defaultPrisma;
   }
 
-  static async previewSubmittedCharacterArtPrompt(userId: string, tableId: string, characterId: string) {
+  static async previewSubmittedCharacterArtPrompt(
+    userId: string,
+    tableId: string,
+    characterId: string,
+    variantInput?: unknown
+  ) {
+    const variant = this.normalizeVariant(variantInput);
+    const promptVersion = variant === "PLAYABLE_CARD"
+      ? CHARACTER_FULL_ART_CARD_PROMPT_VERSION
+      : CHARACTER_CARD_ART_PROMPT_VERSION;
     const roleContext = await TableService.getTableRoleContext(tableId, userId);
     const account = await this.db.user.findUnique({ where: { id: userId }, select: { accountRole: true } });
     if (roleContext.role !== TableMemberRole.PLAYER && account?.accountRole !== AccountRole.ADMIN) {
@@ -115,7 +170,7 @@ export class CharacterCardArtService {
         userId,
         tableId,
         characterId,
-        promptVersion: CHARACTER_CARD_ART_PROMPT_VERSION,
+        promptVersion,
         provider: "internal",
         model: "prompt-builder",
         status: AiUsageStatus.ERROR,
@@ -137,7 +192,8 @@ export class CharacterCardArtService {
 
     const snapshot = submittedSnapshot.characterSnapshot as Prisma.JsonObject;
     const fields = this.buildPromptFields(snapshot, submittedSnapshot.builderConfigVersion);
-    const prompt = this.interpolate(fields);
+    const prompt = this.interpolate(fields, variant);
+    const briefing = this.buildBriefing(snapshot);
     this.assertNoForbidden(prompt);
 
     const event = await AiGateway.recordInternalEvent({
@@ -146,13 +202,15 @@ export class CharacterCardArtService {
       tableId,
       characterId,
       contextVersionId: submittedSnapshot.contextVersionId,
-      promptVersion: CHARACTER_CARD_ART_PROMPT_VERSION,
+      promptVersion,
       provider: "internal",
       model: "prompt-builder",
     });
 
     return {
-      promptVersion: CHARACTER_CARD_ART_PROMPT_VERSION,
+      variant,
+      briefing,
+      promptVersion,
       sourceSubmission: {
         id: submittedSnapshot.id,
         sheetRevision: submittedSnapshot.sheetRevision,
@@ -165,6 +223,7 @@ export class CharacterCardArtService {
       provider: "openai",
       storage: "database",
       generationLimit: 1,
+      totalGenerationLimit: 2,
       pending: [],
       fields,
       prompt,
@@ -179,6 +238,8 @@ export class CharacterCardArtService {
       select: {
         id: true,
         attemptNumber: true,
+        variant: true,
+        briefing: true,
         promptVersion: true,
         provider: true,
         model: true,
@@ -187,21 +248,34 @@ export class CharacterCardArtService {
         completedAt: true,
       },
     });
+    const portraitCount = items.filter((item) => item.variant === "PORTRAIT").length;
+    const playableCardCount = items.filter((item) => item.variant === "PLAYABLE_CARD").length;
     return {
-      limit: 1,
-      remaining: Math.max(0, 1 - items.length),
+      limit: 2,
+      remaining: Math.max(0, 2 - items.length),
+      availability: {
+        PORTRAIT: { limit: 1, remaining: Math.max(0, 1 - portraitCount) },
+        PLAYABLE_CARD: { limit: 1, remaining: Math.max(0, 1 - playableCardCount) },
+      },
       items: items.map((item) => this.formatGeneration(item, tableId, characterId)),
     };
   }
 
-  static async generate(userId: string, tableId: string, characterId: string) {
-    const preview = await this.previewSubmittedCharacterArtPrompt(userId, tableId, characterId);
+  static async generate(userId: string, tableId: string, characterId: string, variantInput?: unknown) {
+    const variant = this.normalizeVariant(variantInput);
+    const preview = await this.previewSubmittedCharacterArtPrompt(userId, tableId, characterId, variant);
     const sourceSubmission = preview.sourceSubmission;
     const activeCount = await this.db.characterCardArtGeneration.count({
-      where: { userId, tableId, characterId, status: { in: ["PENDING", "SUCCESS"] } },
+      where: { userId, tableId, characterId, variant, status: { in: ["PENDING", "SUCCESS"] } },
     });
     if (activeCount >= 1) {
-      throw new AppError(409, "Este personagem ja possui uma carta gerada.", "CARD_ART_LIMIT_REACHED");
+      throw new AppError(
+        409,
+        variant === "PLAYABLE_CARD"
+          ? "Este personagem ja possui uma carta full art."
+          : "Este personagem ja possui uma imagem gerada.",
+        "CARD_ART_LIMIT_REACHED"
+      );
     }
     const last = await this.db.characterCardArtGeneration.findFirst({
       where: { characterId },
@@ -216,6 +290,8 @@ export class CharacterCardArtService {
         userId,
         tableId,
         attemptNumber,
+        variant,
+        briefing: preview.briefing,
         promptVersion: preview.promptVersion,
         prompt: preview.prompt,
       },
@@ -251,6 +327,8 @@ export class CharacterCardArtService {
         select: {
           id: true,
           attemptNumber: true,
+          variant: true,
+          briefing: true,
           promptVersion: true,
           provider: true,
           model: true,
@@ -305,6 +383,8 @@ export class CharacterCardArtService {
   private static formatGeneration(generation: {
     id: string;
     attemptNumber: number;
+    variant: string;
+    briefing: string | null;
     promptVersion: string;
     provider: string | null;
     model: string | null;
@@ -337,8 +417,37 @@ export class CharacterCardArtService {
     };
   }
 
-  private static interpolate(fields: Record<string, string>): string {
-    return CARD_ART_TEMPLATE.replace(/\{\{([a-zA-Z0-9]+)\}\}/g, (_match, key) => fields[key] ?? "Nao informado");
+  private static interpolate(fields: Record<string, string>, variant: CharacterCardArtVariant): string {
+    const template = variant === "PLAYABLE_CARD" ? FULL_ART_CARD_TEMPLATE : PORTRAIT_ART_TEMPLATE;
+    return template.replace(/\{\{([a-zA-Z0-9]+)\}\}/g, (_match, key) => fields[key] ?? "Nao informado");
+  }
+
+  static buildBriefing(snapshot: Prisma.JsonObject): string {
+    const concept = this.cleanBriefingText(snapshot.concept);
+    const motivation = this.cleanBriefingText(snapshot.motivation ?? snapshot.desire);
+    const source = [concept, motivation]
+      .filter((value, index, values) => value && values.indexOf(value) === index)
+      .join(" ");
+    const fallback = "Guardiao marcado por uma historia que ainda sera contada.";
+    const text = source || fallback;
+    if (text.length <= 220) return text;
+    const shortened = text.slice(0, 217);
+    const lastSpace = shortened.lastIndexOf(" ");
+    return `${shortened.slice(0, lastSpace > 140 ? lastSpace : 217).trim()}...`;
+  }
+
+  private static cleanBriefingText(value: unknown): string {
+    if (typeof value !== "string") return "";
+    return value
+      .replace(/[\u0000-\u001F\u007F]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private static normalizeVariant(value: unknown): CharacterCardArtVariant {
+    if (value === undefined || value === null || value === "") return "PORTRAIT";
+    if (value === "PORTRAIT" || value === "PLAYABLE_CARD") return value;
+    throw new AppError(400, "Escolha um formato de carta valido.", "CARD_ART_VARIANT_INVALID");
   }
 
   private static safeText(value: unknown): string {
