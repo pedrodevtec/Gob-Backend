@@ -97,6 +97,96 @@ export class BuilderService {
     return normalized;
   }
 
+  static normalizeSuggestedAttributes(value: unknown, version?: string): Record<string, number> {
+    const config = version ? this.getConfig(version) : this.getActiveConfig();
+    const allowedKeys = config.attributes.options.map((option) => option.key);
+
+    if (!isRecord(value)) {
+      throw new AppError(
+        502,
+        "A sugestao de atributos retornada pela IA e invalida.",
+        "INVALID_AI_MECHANICAL_PROPOSAL"
+      );
+    }
+
+    const incomingKeys = Object.keys(value);
+    const missingKeys = allowedKeys.filter((key) => !incomingKeys.includes(key));
+    const unknownKeys = incomingKeys.filter((key) => !allowedKeys.includes(key));
+    if (missingKeys.length || unknownKeys.length || incomingKeys.length !== allowedKeys.length) {
+      throw new AppError(
+        502,
+        "A sugestao de atributos retornada pela IA esta incompleta.",
+        "INVALID_AI_MECHANICAL_PROPOSAL",
+        { missingKeys, unknownKeys }
+      );
+    }
+
+    const normalized: Record<string, number> = {};
+    for (const key of allowedKeys) {
+      const rawValue = value[key];
+      if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
+        throw new AppError(
+          502,
+          "A sugestao de atributos retornada pela IA e invalida.",
+          "INVALID_AI_MECHANICAL_PROPOSAL"
+        );
+      }
+      normalized[key] = Math.min(
+        config.attributes.pilotSelectableMax,
+        Math.max(config.attributes.minValue, Math.round(rawValue))
+      );
+    }
+
+    const targetTotal = config.attributes.totalPoints;
+    let currentTotal = Object.values(normalized).reduce((sum, attribute) => sum + attribute, 0);
+    let remainingIterations = allowedKeys.length * targetTotal;
+
+    while (currentTotal < targetTotal && remainingIterations > 0) {
+      const candidate = [...allowedKeys]
+        .filter((key) => normalized[key] < config.attributes.pilotSelectableMax)
+        .sort((left, right) => normalized[right] - normalized[left])[0];
+      if (!candidate) break;
+      normalized[candidate] += 1;
+      currentTotal += 1;
+      remainingIterations -= 1;
+    }
+
+    while (currentTotal > targetTotal && remainingIterations > 0) {
+      const candidate = [...allowedKeys]
+        .filter((key) => normalized[key] > config.attributes.minValue)
+        .sort((left, right) => normalized[right] - normalized[left])[0];
+      if (!candidate) break;
+      normalized[candidate] -= 1;
+      currentTotal -= 1;
+      remainingIterations -= 1;
+    }
+
+    for (const rule of config.attributes.requireAtLeastOneOf) {
+      if (rule.keys.some((key) => (normalized[key] ?? 0) >= rule.minValue)) continue;
+
+      const targetKey = [...rule.keys]
+        .filter((key) => allowedKeys.includes(key))
+        .sort((left, right) => (normalized[right] ?? 0) - (normalized[left] ?? 0))[0];
+      if (!targetKey) continue;
+
+      let pointsNeeded = rule.minValue - (normalized[targetKey] ?? 0);
+      const donors = [...allowedKeys]
+        .filter((key) => key !== targetKey)
+        .sort((left, right) => normalized[right] - normalized[left]);
+
+      for (const donor of donors) {
+        while (pointsNeeded > 0 && normalized[donor] > config.attributes.minValue) {
+          normalized[donor] -= 1;
+          normalized[targetKey] += 1;
+          pointsNeeded -= 1;
+        }
+        if (pointsNeeded === 0) break;
+      }
+    }
+
+    return this.normalizeAttributes(normalized, config.version);
+  }
+
   static normalizeTrainings(value: unknown, version?: string): string[] {
     const config = version ? this.getConfig(version) : this.getActiveConfig();
     const allowed = new Set(config.trainings.options.map((option) => option.key));

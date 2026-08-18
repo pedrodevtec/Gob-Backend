@@ -166,12 +166,12 @@ export const characterMechanicalProposalOutputSchema: JsonSchema = {
     attributes: {
       type: "object",
       properties: {
-        strength: { type: "integer" },
-        agility: { type: "integer" },
-        vigor: { type: "integer" },
-        intellect: { type: "integer" },
-        presence: { type: "integer" },
-        spirit: { type: "integer" },
+        strength: { type: "integer", minimum: 0, maximum: 4 },
+        agility: { type: "integer", minimum: 0, maximum: 4 },
+        vigor: { type: "integer", minimum: 0, maximum: 4 },
+        intellect: { type: "integer", minimum: 0, maximum: 4 },
+        presence: { type: "integer", minimum: 0, maximum: 4 },
+        spirit: { type: "integer", minimum: 0, maximum: 4 },
       },
       required: ["strength", "agility", "vigor", "intellect", "presence", "spirit"],
       additionalProperties: false,

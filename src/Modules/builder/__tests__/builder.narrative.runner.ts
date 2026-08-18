@@ -15,6 +15,21 @@ const attributes = BuilderService.normalizeAttributes(
   active.version
 );
 assert.equal(Object.values(attributes).reduce((sum, value) => sum + value, 0), 12);
+
+const repairedOverflow = BuilderService.normalizeSuggestedAttributes(
+  { strength: 4, agility: 4, vigor: 4, intellect: 4, presence: 4, spirit: 4 },
+  active.version
+);
+assert.equal(Object.values(repairedOverflow).reduce((sum, value) => sum + value, 0), 12);
+assert.equal(Object.values(repairedOverflow).every((value) => value >= 0 && value <= 4), true);
+
+const repairedSurvivability = BuilderService.normalizeSuggestedAttributes(
+  { strength: 4, agility: 4, vigor: 0, intellect: 2, presence: 2, spirit: 0 },
+  active.version
+);
+assert.equal(Object.values(repairedSurvivability).reduce((sum, value) => sum + value, 0), 12);
+assert.equal(repairedSurvivability.vigor >= 1 || repairedSurvivability.spirit >= 1, true);
+
 assert.deepEqual(
   BuilderService.normalizeTrainings(["combat", "defense", "survival"], active.version),
   ["combat", "defense", "survival"]
