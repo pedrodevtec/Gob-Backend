@@ -40,7 +40,7 @@ const PLAYER_ASSISTANT_INSTRUCTIONS = [
 ].join(" ");
 
 const CHARACTER_CHAPTER_PROMPT_VERSION = "character-chapter-v2";
-const CHARACTER_MECHANICS_PROMPT_VERSION = "character-mechanics-v1";
+const CHARACTER_MECHANICS_PROMPT_VERSION = "character-mechanics-v2";
 const MAX_CHAPTER_SUGGESTIONS = 3;
 
 const CHAPTER_ASSISTANT_INSTRUCTIONS = [
@@ -299,6 +299,11 @@ export class PlayerAiService {
         CHAPTER_ASSISTANT_INSTRUCTIONS,
         "Use somente o contexto narrativo confirmado e a preferencia de jogo.",
         "Use exclusivamente arquetipos, atributos, treinamentos e slots presentes no catalogo enviado.",
+        "Distribua EXATAMENTE 12 pontos entre strength, agility, vigor, intellect, presence e spirit.",
+        "A soma dos seis atributos deve ser exatamente 12, nunca 11, 13 ou qualquer outro total.",
+        "Cada atributo deve ser um numero inteiro entre 0 e 4.",
+        "Vigor ou Espirito deve possuir pelo menos 1 ponto.",
+        "Confira matematicamente a soma antes de responder.",
         "A proposta nunca e aplicada automaticamente.",
       ].join(" "),
       prompt: JSON.stringify({
@@ -308,6 +313,13 @@ export class PlayerAiService {
         catalogs: {
           archetypes: builderConfig.archetypes.options,
           attributes: builderConfig.attributes,
+          attributeDistributionRules: {
+            keys: builderConfig.attributes.options.map((attribute) => attribute.key),
+            exactTotal: builderConfig.attributes.totalPoints,
+            minimumPerAttribute: builderConfig.attributes.minValue,
+            maximumPerAttribute: builderConfig.attributes.pilotSelectableMax,
+            requireAtLeastOneOf: builderConfig.attributes.requireAtLeastOneOf,
+          },
           trainings: builderConfig.trainings,
           equipment: builderConfig.equipment,
         },
@@ -322,7 +334,10 @@ export class PlayerAiService {
     if (!archetypes.length) {
       throw new AppError(502, "A IA nao retornou arquetipo oficial valido.", "INVALID_AI_MECHANICAL_PROPOSAL");
     }
-    const attributes = BuilderService.normalizeAttributes(result.data.attributes, builderConfig.version);
+    const attributes = BuilderService.normalizeSuggestedAttributes(
+      result.data.attributes,
+      builderConfig.version
+    );
     const trainings = BuilderService.normalizeTrainings(result.data.trainings, builderConfig.version);
     const equipment = result.data.equipment.map((item) => ({
       slot: item.slot,
