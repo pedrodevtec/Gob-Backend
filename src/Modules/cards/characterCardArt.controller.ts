@@ -8,7 +8,12 @@ export const previewCharacterCardArtPrompt = asyncHandler(async (req: Request, r
   const userId = requireUserId(req);
   const tableId = requireString(req.params.tableId, "tableId");
   const characterId = requireString(req.params.characterId, "characterId");
-  const preview = await CharacterCardArtService.previewSubmittedCharacterArtPrompt(userId, tableId, characterId);
+  const preview = await CharacterCardArtService.previewSubmittedCharacterArtPrompt(
+    userId,
+    tableId,
+    characterId,
+    req.body?.variant
+  );
   sendSuccess(res, 200, { preview });
 });
 
@@ -16,7 +21,8 @@ export const listCharacterCardArt = asyncHandler(async (req: Request, res: Respo
   const result = await CharacterCardArtService.listGenerations(
     requireUserId(req),
     requireString(req.params.tableId, "tableId"),
-    requireString(req.params.characterId, "characterId")
+    requireString(req.params.characterId, "characterId"),
+    req.body?.variant
   );
   sendSuccess(res, 200, { generations: result });
 });
