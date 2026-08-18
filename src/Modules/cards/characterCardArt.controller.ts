@@ -21,8 +21,7 @@ export const listCharacterCardArt = asyncHandler(async (req: Request, res: Respo
   const result = await CharacterCardArtService.listGenerations(
     requireUserId(req),
     requireString(req.params.tableId, "tableId"),
-    requireString(req.params.characterId, "characterId"),
-    req.body?.variant
+    requireString(req.params.characterId, "characterId")
   );
   sendSuccess(res, 200, { generations: result });
 });
@@ -31,7 +30,8 @@ export const generateCharacterCardArt = asyncHandler(async (req: Request, res: R
   const generation = await CharacterCardArtService.generate(
     requireUserId(req),
     requireString(req.params.tableId, "tableId"),
-    requireString(req.params.characterId, "characterId")
+    requireString(req.params.characterId, "characterId"),
+    req.body?.variant
   );
   sendSuccess(res, 201, { generation }, "Imagem do personagem gerada com sucesso.");
 });
