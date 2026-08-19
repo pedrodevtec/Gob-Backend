@@ -9,56 +9,12 @@ import { AiClient } from "../ai/ai.client";
 
 type CardArtDb = typeof defaultPrisma;
 
-export const CHARACTER_CARD_ART_PROMPT_VERSION = "character-card-art-v1";
-export const CHARACTER_FULL_ART_CARD_PROMPT_VERSION = "character-full-art-card-v1";
+export const CHARACTER_CARD_ART_PROMPT_VERSION = "character-card-art-v2";
+export const CHARACTER_FULL_ART_CARD_PROMPT_VERSION = "character-full-art-card-v2";
 
 export type CharacterCardArtVariant = "PORTRAIT" | "PLAYABLE_CARD";
 
-const PORTRAIT_ART_TEMPLATE = `Crie exclusivamente a ilustracao de um personagem para uma carta de Guardian of Bravantus. Nao desenhe moldura, logotipo, numeros, letras ou textos.
-
-PERSONAGEM
-
-Nome de referencia, nao escrever na imagem:
-{{name}}
-
-Conceito:
-{{concept}}
-
-Origem:
-{{origin}}
-
-Aparencia fisica:
-{{appearance}}
-
-Arquetipo:
-{{archetypeName}}
-
-Marca:
-
-* Local: {{markLocation}}
-* Aparencia: {{markAppearance}}
-* Reacao visual: {{markReaction}}
-
-Caracteristicas:
-
-* Trait positiva: {{positiveTrait}}
-* Trait negativa: {{negativeTrait}}
-
-Equipamentos visiveis:
-{{equipmentSummary}}
-
-DIRECAO VISUAL
-
-Fantasia heroica medieval autoral, detalhada e cinematografica.
-Atmosfera antiga, protetora, mistica e levemente melancolica.
-Paleta de verde profundo, dourado envelhecido, marrom escuro, cinza de tempestade e luzes discretas relacionadas a Marca.
-
-Composicao vertical adequada para uma carta de 63 x 88 mm.
-Personagem como foco principal, silhueta legivel e fundo narrativo discreto.
-Nao inventar simbolos, poderes, equipamentos ou detalhes nao sustentados pelas informacoes fornecidas.
-Nao incluir texto, assinatura, marca d'agua, moldura ou interface.`;
-
-const FULL_ART_CARD_TEMPLATE = `Crie exclusivamente a arte full art vertical de um personagem para uma carta jogavel de Guardian of Bravantus. Nao desenhe moldura, logotipo, numeros, letras ou textos: a interface acrescentara essas informacoes depois.
+const PORTRAIT_ART_TEMPLATE = `Crie exclusivamente a ilustracao vertical de um personagem de Guardian of Bravantus. A arte sera usada dentro de uma carta montada pela plataforma.
 
 PERSONAGEM
 
@@ -83,23 +39,90 @@ Marca:
 * Reacao visual: {{markReaction}}
 
 Caracteristicas:
-* Trait positiva: {{positiveTrait}}
-* Trait negativa: {{negativeTrait}}
+* Forca marcante: {{positiveTrait}}
+* Desafio marcante: {{negativeTrait}}
 
 Equipamentos visiveis:
 {{equipmentSummary}}
 
-DIRECAO VISUAL
+LINGUAGEM VISUAL DE BRAVANTUS
 
-Fantasia heroica medieval autoral, detalhada e cinematografica.
-Atmosfera antiga, protetora, mistica e levemente melancolica.
-Paleta de verde profundo, dourado envelhecido, marrom escuro, cinza de tempestade e luzes discretas relacionadas a Marca.
-Composicao vertical full bleed, proporcao 63 x 88 mm, sem moldura.
-Personagem como foco principal na metade superior e no centro.
-Reserve o quarto inferior com fundo mais escuro, calmo e de baixo detalhe para receber nome e um resumo curto em branco na montagem da carta.
-Mantenha rosto, Marca e equipamento principal fora da area reservada ao texto.
-Nao inventar simbolos, poderes, equipamentos ou detalhes nao sustentados pelas informacoes fornecidas.
-Nao incluir texto, assinatura, marca d'agua, moldura, interface, icones ou numeros.`;
+Fantasia medieval autoral com aparencia de ilustracao editorial feita sobre papel marfim.
+Combinar pintura digital delicada, textura artesanal de guache e aquarela e detalhes discretos inspirados em pixel art refinada.
+Cenario claro, acolhedor e contemplativo, com ruinas antigas cobertas por musgo, montanhas palidas entre nuvens, vegetacao delicada e luz suave de inicio da manha.
+Paleta dessaturada de branco-nuvem, marfim, areia, cinza-pedra, verde-salvia, musgo, terracota e dourado envelhecido.
+A Marca pode emitir um brilho dourado suave e localizado, sem dominar a imagem.
+A cena deve parecer parte do mesmo mundo visual de um antigo arquivo ilustrado de Guardioes, nunca uma arte generica de videogame.
+
+COMPOSICAO
+
+Proporcao vertical 63 x 88 mm.
+Personagem como foco principal, com silhueta, rosto, Marca e equipamento principal claramente legiveis.
+Usar profundidade atmosferica suave e fundo narrativo relacionado somente aos dados confirmados.
+Evitar fundo escuro uniforme; preservar contraste natural entre o personagem e o cenario.
+Nao inventar especie, simbolos, poderes, equipamentos, locais ou acontecimentos nao sustentados pelas informacoes fornecidas.
+
+NAO INCLUIR
+
+Palavras, letras, numeros, titulo, nome, logotipo, assinatura, marca d'agua, moldura, carta pronta, botao, interface, barras, icones ou estatisticas.
+Nao usar neon, cyberpunk, ficcao cientifica, armadura futurista, azul eletrico, roxo saturado, excesso de particulas, brilho artificial intenso ou estetica de dashboard.
+Gerar somente a ilustracao do personagem e seu ambiente.`;
+
+const FULL_ART_CARD_TEMPLATE = `Crie exclusivamente a ilustracao full art vertical de um personagem para uma carta jogavel de Guardian of Bravantus. A plataforma adicionara nome, resumo e numeros depois da geracao.
+
+PERSONAGEM
+
+Nome de referencia, nao escrever na imagem:
+{{name}}
+
+Conceito:
+{{concept}}
+
+Origem:
+{{origin}}
+
+Aparencia fisica:
+{{appearance}}
+
+Arquetipo:
+{{archetypeName}}
+
+Marca:
+* Local: {{markLocation}}
+* Aparencia: {{markAppearance}}
+* Reacao visual: {{markReaction}}
+
+Caracteristicas:
+* Forca marcante: {{positiveTrait}}
+* Desafio marcante: {{negativeTrait}}
+
+Equipamentos visiveis:
+{{equipmentSummary}}
+
+LINGUAGEM VISUAL DE BRAVANTUS
+
+Fantasia medieval autoral com aparencia de ilustracao editorial sobre papel marfim.
+Combinar pintura digital delicada, textura artesanal de guache e aquarela e detalhes discretos inspirados em pixel art refinada.
+O personagem deve pertencer ao mesmo universo visual de ruinas antigas cobertas por musgo, montanhas palidas entre nuvens, vegetacao delicada, pedra envelhecida e luz suave de inicio da manha.
+Paleta dessaturada de branco-nuvem, marfim, areia, cinza-pedra, verde-salvia, musgo, terracota e dourado envelhecido.
+A Marca pode emitir brilho dourado suave e localizado.
+Atmosfera de descoberta, memoria e destino; acolhedora, antiga e levemente melancolica.
+Evitar a aparencia generica de concept art de videogame e manter identidade editorial artesanal.
+
+COMPOSICAO DA FRENTE
+
+Composicao vertical full bleed na proporcao 63 x 88 mm, sem moldura.
+Personagem como foco principal na metade superior e no centro, com silhueta e rosto legiveis.
+Integrar o personagem naturalmente ao cenario, sem parecer recortado ou colado.
+Reservar aproximadamente os 28 por cento inferiores com pedras, vegetacao ou sombra em tons de musgo e terracota, com poucos detalhes e contraste suficiente para receber posteriormente nome e resumo curto em branco.
+Manter rosto, Marca, maos e equipamento principal fora da area reservada ao texto.
+Nao inventar especie, simbolos, poderes, equipamentos, locais ou acontecimentos nao sustentados pelas informacoes fornecidas.
+
+NAO INCLUIR
+
+Palavras, letras, numeros, titulo, nome, logotipo, assinatura, marca d'agua, moldura, carta pronta, botao, interface, barras, icones ou estatisticas.
+Nao usar neon, cyberpunk, ficcao cientifica, armadura futurista, azul eletrico, roxo saturado, excesso de particulas, brilho artificial intenso ou estetica de dashboard.
+Gerar somente a ilustracao full art do personagem e seu ambiente.`;
 
 const FORBIDDEN_MARKERS = [
   "gm_secret",
@@ -192,7 +215,7 @@ export class CharacterCardArtService {
 
     const snapshot = submittedSnapshot.characterSnapshot as Prisma.JsonObject;
     const fields = this.buildPromptFields(snapshot, submittedSnapshot.builderConfigVersion);
-    const prompt = this.interpolate(fields, variant);
+    const prompt = this.buildVisualPrompt(fields, variant);
     const briefing = this.buildBriefing(snapshot);
     this.assertNoForbidden(prompt);
 
@@ -417,7 +440,10 @@ export class CharacterCardArtService {
     };
   }
 
-  private static interpolate(fields: Record<string, string>, variant: CharacterCardArtVariant): string {
+  static buildVisualPrompt(
+    fields: Record<string, string>,
+    variant: CharacterCardArtVariant
+  ): string {
     const template = variant === "PLAYABLE_CARD" ? FULL_ART_CARD_TEMPLATE : PORTRAIT_ART_TEMPLATE;
     return template.replace(/\{\{([a-zA-Z0-9]+)\}\}/g, (_match, key) => fields[key] ?? "Nao informado");
   }
