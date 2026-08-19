@@ -1188,6 +1188,8 @@ model CharacterCardArtGeneration {
   userId               String
   tableId              String
   attemptNumber        Int
+  variant              String   @default("PORTRAIT")
+  briefing             String?  @db.VarChar(240)
   status               String   @default("PENDING")
   promptVersion        String
   prompt               String   @db.Text
@@ -1206,6 +1208,7 @@ model CharacterCardArtGeneration {
   table              Table                       @relation(fields: [tableId], references: [id], onDelete: Cascade)
 
   @@unique([characterId, attemptNumber])
+  @@index([characterId, variant, status])
   @@index([userId, createdAt])
   @@index([tableId, createdAt])
   @@index([submissionSnapshotId])
