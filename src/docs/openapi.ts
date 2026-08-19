@@ -1842,7 +1842,7 @@ export const openApiDocument = {
         properties: {
           variant: { type: "string", enum: ["PORTRAIT", "PLAYABLE_CARD"] },
           briefing: { type: "string", maxLength: 240 },
-          promptVersion: { type: "string", enum: ["character-card-art-v1", "character-full-art-card-v1"] },
+          promptVersion: { type: "string", enum: ["character-card-art-v2", "character-full-art-card-v2"] },
           sourceSubmission: {
             type: "object",
             properties: {
