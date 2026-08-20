@@ -43,6 +43,18 @@ const characterInclude = {
   submissionSnapshots: { orderBy: [{ submittedAt: "desc" }, { id: "desc" }] },
 } satisfies Prisma.CharacterInclude;
 
+const journeyMilestones = [
+  "ENTRY_COMPLETED",
+  "CHARACTER_STARTED",
+  "IDENTITY_COMPLETED",
+  "MARK_COMPLETED",
+  "REVIEW_READY",
+  "CHARACTER_SUBMITTED",
+  "CHARACTER_APPROVED",
+] as const;
+
+type JourneyMilestone = (typeof journeyMilestones)[number];
+
 export class TableCharacterPackage03Service {
   private static db: CharacterDb = defaultPrisma;
 
@@ -953,6 +965,87 @@ export class TableCharacterPackage03Service {
     return { key: "VIEW_CHARACTER", title: "Ver personagem" };
   }
 
+  private static hasJourneyValue(value: unknown): boolean {
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") return Object.keys(value).length > 0;
+    return value !== null && value !== undefined;
+  }
+
+  private static buildJourneyProgress(
+    character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>
+  ) {
+    const config = BuilderService.getConfig(character.builderConfigVersion);
+    const confirmed = this.jsonRecord(character.confirmedNarrativeContext);
+    const confirmedFields = this.jsonRecord(confirmed.fields);
+    const confirmedBlocks = Array.isArray(confirmed.confirmedBlocks)
+      ? confirmed.confirmedBlocks.map(String)
+      : [];
+    const responses = this.jsonRecord(character.narrativeResponses);
+
+    const fieldValue = (field: string) =>
+      confirmedFields[field] ?? character[field as keyof typeof character];
+    const fieldsComplete = (fields: string[]) =>
+      fields.every((field) => this.hasJourneyValue(fieldValue(field)));
+
+    const identityCompleted = config.narrativeFlow
+      ? this.hasJourneyValue(responses.before_mark) &&
+        confirmedBlocks.includes("identity") &&
+        fieldsComplete(["name", "concept", "personalHistory"])
+      : fieldsComplete(["name", "concept", "origin", "appearance", "personalHistory"]);
+    const markCompleted = config.narrativeFlow
+      ? this.hasJourneyValue(responses.mark_change) &&
+        confirmedBlocks.includes("mark") &&
+        fieldsComplete(["markAppearance", "markAttitude"])
+      : fieldsComplete(["markLocation", "markAppearance", "markReaction", "markAttitude"]);
+
+    let reviewReady = false;
+    try {
+      this.assertReadyForSubmission(character);
+      reviewReady = true;
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error;
+    }
+
+    const submitted =
+      character.submissionSnapshots.length > 0 ||
+      character.submittedAt !== null ||
+      character.sheetStatus === CharacterSheetStatus.SUBMITTED ||
+      character.sheetStatus === CharacterSheetStatus.CHANGES_REQUESTED ||
+      character.sheetStatus === CharacterSheetStatus.APPROVED;
+    const approved = character.sheetStatus === CharacterSheetStatus.APPROVED;
+    const completedFlags: Record<JourneyMilestone, boolean> = {
+      ENTRY_COMPLETED: true,
+      CHARACTER_STARTED: true,
+      IDENTITY_COMPLETED: identityCompleted,
+      MARK_COMPLETED: markCompleted,
+      REVIEW_READY: reviewReady || submitted,
+      CHARACTER_SUBMITTED: submitted,
+      CHARACTER_APPROVED: approved,
+    };
+    const completedMilestones: JourneyMilestone[] = [];
+    for (const milestone of journeyMilestones) {
+      if (!completedFlags[milestone]) break;
+      completedMilestones.push(milestone);
+    }
+    const currentMilestone =
+      completedMilestones[completedMilestones.length - 1] ?? "ENTRY_COMPLETED";
+    const nextMilestone = approved
+      ? null
+      : character.sheetStatus === CharacterSheetStatus.CHANGES_REQUESTED
+        ? "REVIEW_READY"
+        : journeyMilestones.find((milestone) => !completedFlags[milestone]) ?? null;
+
+    return {
+      percentage: approved
+        ? 100
+        : Math.round((completedMilestones.length / journeyMilestones.length) * 100),
+      currentMilestone,
+      completedMilestones,
+      nextMilestone,
+    };
+  }
+
   private static formatCharacter(character: Prisma.CharacterGetPayload<{ include: typeof characterInclude }>) {
     const latestSubmission = character.submissionSnapshots[0] ?? null;
     const approvedSubmission =
@@ -1005,6 +1098,7 @@ export class TableCharacterPackage03Service {
       approvedBy: character.approvedBy,
       editable: editableStatuses.has(character.sheetStatus),
       nextAction: this.buildNextAction(character),
+      journeyProgress: this.buildJourneyProgress(character),
       masterFeedback: review?.masterFeedback ?? null,
       latestSubmission: latestSubmission
         ? {

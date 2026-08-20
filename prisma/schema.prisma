@@ -243,6 +243,12 @@ enum AiCostSource {
   USAGE_UNAVAILABLE
 }
 
+enum GuardianAvatarKey {
+  guardian_sword
+  guardian_fist
+  guardian_explorer
+}
+
 model User {
   id                      String                   @id @default(uuid())
   nome                    String
@@ -251,6 +257,7 @@ model User {
   emailVerifiedAt         DateTime?
   accountRole             AccountRole              @default(USER)
   theme                   String?
+  selectedGuardianAvatar  GuardianAvatarKey?
   emailVerificationTokens EmailVerificationToken[]
   characters              Character[]              @relation("UserToCharacter")
   paymentOrders           PaymentOrder[]

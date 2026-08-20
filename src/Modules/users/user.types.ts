@@ -1,3 +1,5 @@
+import { GuardianAvatarKey } from "@prisma/client";
+
 export interface IUser {
   id: string;
   nome: string;
@@ -6,10 +8,12 @@ export interface IUser {
   emailVerifiedAt?: Date | null;
   accountRole: "USER" | "ADMIN";
   theme?: string | null;
+  selectedGuardianAvatar?: GuardianAvatarKey | null;
 }
 
 export interface UpdateProfileInput {
   nome?: string;
   email?: string;
   theme?: string;
+  selectedGuardianAvatar?: GuardianAvatarKey;
 }

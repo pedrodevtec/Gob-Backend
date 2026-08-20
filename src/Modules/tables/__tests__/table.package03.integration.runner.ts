@@ -337,6 +337,8 @@ void (async () => {
       const me = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/me`, { headers: headers(ids.playerA) });
       assert.equal(me.status, 200);
       assert.equal(me.body.character.id, characterA.id);
+      assert.equal(me.body.character.journeyProgress.currentMilestone, "CHARACTER_STARTED");
+      assert.equal(me.body.character.journeyProgress.nextMilestone, "IDENTITY_COMPLETED");
 
       const submit = await requestJson(`${baseUrl}/tables/${tableA.id}/characters/${characterA.id}/submit`, {
         method: "POST",
@@ -409,6 +411,8 @@ void (async () => {
       });
       assert.equal(submit.status, 200);
       assert.equal(submit.body.character.sheetStatus, CharacterSheetStatus.SUBMITTED);
+      assert.equal(submit.body.character.journeyProgress.currentMilestone, "CHARACTER_SUBMITTED");
+      assert.equal(submit.body.character.journeyProgress.nextMilestone, "CHARACTER_APPROVED");
       assert.equal(submit.body.character.latestSubmission.sheetRevision, submit.body.character.submittedRevision);
       assert.equal(
         await prisma.characterSubmissionSnapshot.count({ where: { characterId: characterA.id } }),
