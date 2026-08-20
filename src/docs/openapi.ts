@@ -138,6 +138,11 @@ export const openApiDocument = {
           emailVerifiedAt: { type: "string", format: "date-time", nullable: true },
           accountRole: { type: "string", enum: ["USER", "ADMIN"] },
           theme: { type: "string", nullable: true },
+          selectedGuardianAvatar: {
+            type: "string",
+            nullable: true,
+            enum: ["guardian_sword", "guardian_fist", "guardian_explorer"],
+          },
         },
       },
       CharacterBuilderConfig: {
@@ -980,6 +985,10 @@ export const openApiDocument = {
           nome: { type: "string" },
           email: { type: "string", format: "email" },
           theme: { type: "string", enum: ["default", "ocean", "ember", "verdant"] },
+          selectedGuardianAvatar: {
+            type: "string",
+            enum: ["guardian_sword", "guardian_fist", "guardian_explorer"],
+          },
         },
       },
       CreateCharacterRequest: {
@@ -2040,6 +2049,22 @@ export const openApiDocument = {
           approvedAt: { type: "string", format: "date-time", nullable: true },
           editable: { type: "boolean" },
           nextAction: { type: "object", properties: { key: { type: "string" }, title: { type: "string" } } },
+          journeyProgress: {
+            type: "object",
+            required: ["percentage", "currentMilestone", "completedMilestones", "nextMilestone"],
+            properties: {
+              percentage: { type: "integer", minimum: 0, maximum: 100 },
+              currentMilestone: {
+                type: "string",
+                enum: ["ENTRY_COMPLETED", "CHARACTER_STARTED", "IDENTITY_COMPLETED", "MARK_COMPLETED", "REVIEW_READY", "CHARACTER_SUBMITTED", "CHARACTER_APPROVED"],
+              },
+              completedMilestones: {
+                type: "array",
+                items: { type: "string" },
+              },
+              nextMilestone: { type: "string", nullable: true },
+            },
+          },
           masterFeedback: { type: "string", nullable: true },
           latestSubmission: { $ref: "#/components/schemas/CharacterSubmissionReference" },
           approvedSubmission: { $ref: "#/components/schemas/CharacterSubmissionReference" },

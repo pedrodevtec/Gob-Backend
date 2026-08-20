@@ -28,6 +28,7 @@ export default class UserModel {
         emailVerifiedAt: true,
         accountRole: true,
         theme: true,
+        selectedGuardianAvatar: true,
       },
     });
 
@@ -49,6 +50,7 @@ export default class UserModel {
         emailVerifiedAt: true,
         accountRole: true,
         theme: true,
+        selectedGuardianAvatar: true,
       },
     });
   }
