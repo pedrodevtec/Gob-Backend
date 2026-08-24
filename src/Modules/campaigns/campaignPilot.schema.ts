@@ -36,8 +36,17 @@ const requireAiHelpfulness = (value: unknown): number | "NOT_USED" => {
   return requireScore(value, "aiHelpfulnessScore");
 };
 
+const optionalSurveyText = (value: unknown, fieldName: string): string | undefined => {
+  if (typeof value === "string" && value.trim() === "") {
+    return undefined;
+  }
+
+  return optionalString(value, fieldName, 1, 2000);
+};
+
 export const validateSubmitFinalSurvey = (req: Request): void => {
   const body = getBody(req);
+  const aiBoundaryProblem = requireBoolean(body.aiBoundaryProblem, "aiBoundaryProblem");
   const parsed: SubmitFinalSurveyInput = {
     characterUnderstandingScore: requireScore(
       body.characterUnderstandingScore,
@@ -45,15 +54,12 @@ export const validateSubmitFinalSurvey = (req: Request): void => {
     ),
     creationExperienceScore: requireScore(body.creationExperienceScore, "creationExperienceScore"),
     aiHelpfulnessScore: requireAiHelpfulness(body.aiHelpfulnessScore),
-    aiBoundaryProblem: requireBoolean(body.aiBoundaryProblem, "aiBoundaryProblem"),
-    aiBoundaryProblemDetails: optionalString(
-      body.aiBoundaryProblemDetails,
-      "aiBoundaryProblemDetails",
-      1,
-      2000
-    ),
+    aiBoundaryProblem,
+    aiBoundaryProblemDetails: aiBoundaryProblem
+      ? optionalSurveyText(body.aiBoundaryProblemDetails, "aiBoundaryProblemDetails")
+      : undefined,
     storyImpactScore: requireScore(body.storyImpactScore, "storyImpactScore"),
-    finalComment: optionalString(body.finalComment, "finalComment", 1, 2000),
+    finalComment: optionalSurveyText(body.finalComment, "finalComment"),
   };
 
   req.body = parsed;

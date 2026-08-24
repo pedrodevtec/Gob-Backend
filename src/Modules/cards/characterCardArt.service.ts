@@ -1,4 +1,4 @@
-import { AccountRole, AiUsageStatus, Prisma, TableMemberRole } from "@prisma/client";
+import { AccountRole, AiUsageStatus, CharacterSheetStatus, Prisma, TableMemberRole } from "@prisma/client";
 import defaultPrisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 import { AiGateway } from "../ai/ai.gateway";
@@ -254,9 +254,9 @@ export class CharacterCardArtService {
   }
 
   static async listGenerations(userId: string, tableId: string, characterId: string) {
-    await this.requireOwnedCharacter(userId, tableId, characterId);
+    await this.requireReadableCharacter(userId, tableId, characterId);
     const items = await this.db.characterCardArtGeneration.findMany({
-      where: { userId, tableId, characterId, status: "SUCCESS", imageData: { not: null } },
+      where: { tableId, characterId, status: "SUCCESS", imageData: { not: null } },
       orderBy: [{ attemptNumber: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,
@@ -380,9 +380,9 @@ export class CharacterCardArtService {
   }
 
   static async getGenerationContent(userId: string, tableId: string, characterId: string, generationId: string) {
-    await this.requireOwnedCharacter(userId, tableId, characterId);
+    await this.requireReadableCharacter(userId, tableId, characterId);
     const generation = await this.db.characterCardArtGeneration.findFirst({
-      where: { id: generationId, userId, tableId, characterId, status: "SUCCESS" },
+      where: { id: generationId, tableId, characterId, status: "SUCCESS" },
       select: { imageData: true, mimeType: true },
     });
     if (!generation?.imageData || !generation.mimeType) {
@@ -391,14 +391,64 @@ export class CharacterCardArtService {
     return { data: Buffer.from(generation.imageData), mimeType: generation.mimeType };
   }
 
-  private static async requireOwnedCharacter(userId: string, tableId: string, characterId: string) {
-    await TableService.getTableRoleContext(tableId, userId);
+  static async listPublicGenerations(characterId: string) {
+    await this.requireApprovedCharacter(characterId);
+    const items = await this.db.characterCardArtGeneration.findMany({
+      where: { characterId, status: "SUCCESS", imageData: { not: null } },
+      orderBy: [{ attemptNumber: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        attemptNumber: true,
+        variant: true,
+        briefing: true,
+        mimeType: true,
+        completedAt: true,
+      },
+    });
+    return items.map((item) => ({
+      ...item,
+      imagePath: `/api/v1/characters/public/${characterId}/card-art/${item.id}/content`,
+    }));
+  }
+
+  static async getPublicGenerationContent(characterId: string, generationId: string) {
+    await this.requireApprovedCharacter(characterId);
+    const generation = await this.db.characterCardArtGeneration.findFirst({
+      where: { id: generationId, characterId, status: "SUCCESS" },
+      select: { imageData: true, mimeType: true },
+    });
+    if (!generation?.imageData || !generation.mimeType) {
+      throw new AppError(404, "Imagem publica do personagem nao encontrada.", "PUBLIC_CARD_ART_NOT_FOUND");
+    }
+    return { data: Buffer.from(generation.imageData), mimeType: generation.mimeType };
+  }
+
+  private static async requireReadableCharacter(userId: string, tableId: string, characterId: string) {
+    const account = await this.db.user.findUnique({ where: { id: userId }, select: { accountRole: true } });
     const character = await this.db.character.findFirst({
-      where: { id: characterId, tableId, userId },
-      select: { id: true },
+      where: { id: characterId, tableId },
+      select: { id: true, userId: true },
     });
     if (!character) {
       throw new AppError(404, "Personagem nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
+    }
+    if (character.userId === userId || account?.accountRole === AccountRole.ADMIN) {
+      return character;
+    }
+    const roleContext = await TableService.getTableRoleContext(tableId, userId);
+    if (roleContext.role !== TableMemberRole.MASTER) {
+      throw new AppError(404, "Personagem nao encontrado.", "TABLE_CHARACTER_NOT_FOUND");
+    }
+    return character;
+  }
+
+  private static async requireApprovedCharacter(characterId: string) {
+    const character = await this.db.character.findFirst({
+      where: { id: characterId, sheetStatus: CharacterSheetStatus.APPROVED },
+      select: { id: true },
+    });
+    if (!character) {
+      throw new AppError(404, "Personagem aprovado nao encontrado.", "PUBLIC_CHARACTER_NOT_FOUND");
     }
     return character;
   }
