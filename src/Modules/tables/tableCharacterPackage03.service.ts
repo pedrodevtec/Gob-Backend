@@ -115,10 +115,56 @@ export class TableCharacterPackage03Service {
   }
 
   static async getCharacter(userId: string, tableId: string, characterId: string) {
-    const membership = await TableAuthorizationService.requireTableMember(tableId, userId);
     const character = await this.findTableCharacter(tableId, characterId);
+    const account = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { accountRole: true },
+    });
+    if (account?.accountRole === AccountRole.ADMIN) {
+      return this.formatCharacter(character);
+    }
+    const membership = await TableAuthorizationService.requireTableMember(tableId, userId);
     this.assertCanRead(character, membership.role, userId);
     return this.formatCharacter(character);
+  }
+
+  static async getApprovedPublicCharacter(characterId: string) {
+    const character = await this.db.character.findFirst({
+      where: { id: characterId, sheetStatus: CharacterSheetStatus.APPROVED },
+      include: characterInclude,
+    });
+    if (!character) {
+      throw new AppError(404, "Personagem aprovado nao encontrado.", "PUBLIC_CHARACTER_NOT_FOUND");
+    }
+
+    const formatted = this.formatCharacter(character);
+    return {
+      id: formatted.id,
+      name: formatted.name,
+      concept: formatted.concept,
+      origin: formatted.origin,
+      appearance: formatted.appearance,
+      desire: formatted.desire,
+      fear: formatted.fear,
+      promiseOrGuilt: formatted.promiseOrGuilt,
+      reasonToActWithGroup: formatted.reasonToActWithGroup,
+      markLocation: formatted.markLocation,
+      markAppearance: formatted.markAppearance,
+      markReaction: formatted.markReaction,
+      markAttitude: formatted.markAttitude,
+      archetypeKey: formatted.archetypeKey,
+      attributes: formatted.attributes,
+      trainings: formatted.trainings,
+      positiveTrait: formatted.positiveTrait,
+      negativeTrait: formatted.negativeTrait,
+      narrativeBond: formatted.narrativeBond,
+      personalHistory: formatted.personalHistory,
+      initialEquipment: formatted.initialEquipment,
+      derivedResources: formatted.derivedResources,
+      sheetStatus: formatted.sheetStatus,
+      approvedAt: formatted.approvedAt,
+      owner: { name: formatted.owner.name },
+    };
   }
 
   static async updateDraft(userId: string, tableId: string, characterId: string, input: CharacterSheetInput) {

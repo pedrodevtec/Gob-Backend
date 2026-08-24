@@ -7,6 +7,8 @@ import {
   deleteCharacter,
   getCharacterById,
   getPublicCharacterProfile,
+  getApprovedPublicCharacterProfile,
+  getApprovedPublicCharacterCardArt,
   getCharacterRankings,
   getCharacterSummary,
   getCharacters,
@@ -26,6 +28,9 @@ import {
 } from "./character.schema";
 
 const router = Router();
+
+router.get("/public/:id", getApprovedPublicCharacterProfile);
+router.get("/public/:id/card-art/:generationId/content", getApprovedPublicCharacterCardArt);
 
 router.use(auth);
 
