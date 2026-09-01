@@ -22,6 +22,7 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:reset-game-state": "ts-node scripts/reset-game-state.ts",
     "test:combat": "node --require ts-node/register src/Modules/gameplay/__tests__/combat.engine.runner.ts",
     "test:market": "node --require ts-node/register src/Modules/shop/__tests__/shop.market.runner.ts",
@@ -50,7 +51,8 @@
     "test:front1": "npm run test:auth && npm run test:context && npm run test:table-package03 && npm run test:ai-context && npm run test:ai && npm run test:ai-p1 && npm run test:middleware",
     "test": "npm run test:auth-contract && npm run test:auth-session && npm run test:campaign-journey && npm run test:campaign-survey && npm run test:builder-narrative && npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:ai-narrative-input && npm run test:ai-p1 && npm run test:middleware && npm run test:auth && npm run test:user-profile && npm run test:context && npm run test:card-art",
     "start": "node dist/server.js",
-    "test:card-art": "node --require ts-node/register src/Modules/cards/__tests__/characterCardArt.runner.ts"
+    "test:card-art": "node --require ts-node/register src/Modules/cards/__tests__/characterCardArt.runner.ts",
+    "build:vercel": "node scripts/vercel-build.js"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -79,5 +81,11 @@
     "prisma": "^6.19.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.0": true,
+    "@prisma/engines@6.19.0": true,
+    "@scarf/scarf@1.4.0": false,
+    "prisma@6.19.0": true
   }
 }
