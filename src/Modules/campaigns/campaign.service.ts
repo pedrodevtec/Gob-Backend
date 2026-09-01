@@ -250,8 +250,8 @@ export class CampaignService {
       consent: this.formatConsent(result.consent),
       campaign: this.formatPublicCampaign(campaign),
       membership: result.membership,
-      journeyState: input.status === ParticipantConsentStatus.ACCEPTED ? "BUILDER_REQUIRED" : "CONSENT_REQUIRED",
-      nextRoute: input.status === ParticipantConsentStatus.ACCEPTED ? `/campanhas/${campaign.slug}/personagem` : `/campanhas/${campaign.slug}/consentimento`,
+      journeyState: input.status === ParticipantConsentStatus.ACCEPTED ? "CONTEXT_REQUIRED" : "CONSENT_REQUIRED",
+      nextRoute: input.status === ParticipantConsentStatus.ACCEPTED ? `/campanhas/${campaign.slug}/episodio-1` : `/campanhas/${campaign.slug}/consentimento`,
     };
   }
 

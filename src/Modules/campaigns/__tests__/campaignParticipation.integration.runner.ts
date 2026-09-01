@@ -126,6 +126,8 @@ void (async () => {
     CampaignService.recordConsent(ids.player, slug, { status: "ACCEPTED", consentVersion: "research-pilot-v1", source: "integration" }),
   ]);
   assert.equal(accepted.length, 2);
+  assert.equal(accepted[0].journeyState, "CONTEXT_REQUIRED");
+  assert.equal(accepted[0].nextRoute, `/campanhas/${slug}/episodio-1`);
   assert.equal(await prisma.participantConsent.count({ where: { userId: ids.player, campaignId: ids.campaign } }), 1);
   assert.equal(await prisma.tableMember.count({ where: { userId: ids.player, tableId: ids.table } }), 1);
 
