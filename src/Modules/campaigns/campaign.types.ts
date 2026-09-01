@@ -14,7 +14,8 @@ export interface UpdatePublicCampaignInput {
 }
 
 export interface RecordConsentInput {
-  status: Extract<ParticipantConsentStatus, "ACCEPTED" | "DECLINED">;
+  status: Extract<ParticipantConsentStatus, "ACCEPTED" | "DECLINED" | "REVOKED">;
+  consentVersion: string;
   source?: string;
 }
 

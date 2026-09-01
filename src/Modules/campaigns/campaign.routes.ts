@@ -9,6 +9,7 @@ import {
   getFinalSurveyConfig,
   getMyFinalSurvey,
   getConsentDocument,
+  getCampaignConsentDocument,
   getPublicCampaign,
   joinPublicCampaign,
   recordConsent,
@@ -37,6 +38,7 @@ router.get("/public/:slug/final-survey/me", auth, getMyFinalSurvey);
 router.put("/public/:slug/final-survey/me", auth, validate(validateSubmitFinalSurvey), submitFinalSurvey);
 router.post("/public/:slug/events", auth, validate(validateRecordAnalyticsEvent), recordCampaignAnalyticsEvent);
 router.get("/public/:slug", getPublicCampaign);
+router.get("/public/:slug/consent", getCampaignConsentDocument);
 router.get("/public/:slug/resume", auth, resumePublicCampaign);
 router.post("/public/:slug/consent", auth, validate(validateRecordConsent), recordConsent);
 router.post("/public/:slug/join", auth, joinPublicCampaign);

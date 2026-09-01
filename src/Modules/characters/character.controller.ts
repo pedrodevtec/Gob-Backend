@@ -6,6 +6,7 @@ import { AppError } from "../../errors/AppError";
 import { CharacterService } from "./character.service";
 import { TableCharacterPackage03Service } from "../tables/tableCharacterPackage03.service";
 import { CharacterCardArtService } from "../cards/characterCardArt.service";
+import { CampaignParticipationPolicy } from "../campaigns/campaignParticipation.policy";
 
 const parseRankingLimit = (value: unknown) => {
   if (value === undefined) {
@@ -53,20 +54,24 @@ export const getPublicCharacterProfile = asyncHandler(async (req: Request, res: 
 
 export const getApprovedPublicCharacterProfile = asyncHandler(async (req: Request, res: Response) => {
   const characterId = requireString(req.params.id, "id");
+  await CampaignParticipationPolicy.requirePublicProfileEligibility(characterId);
   const [character, cardArt] = await Promise.all([
     TableCharacterPackage03Service.getApprovedPublicCharacter(characterId),
     CharacterCardArtService.listPublicGenerations(characterId),
   ]);
+  res.setHeader("Cache-Control", "no-store");
   sendSuccess(res, 200, { character, cardArt });
 });
 
 export const getApprovedPublicCharacterCardArt = asyncHandler(async (req: Request, res: Response) => {
+  const characterId = requireString(req.params.id, "id");
+  await CampaignParticipationPolicy.requirePublicProfileEligibility(characterId);
   const content = await CharacterCardArtService.getPublicGenerationContent(
-    requireString(req.params.id, "id"),
+    characterId,
     requireString(req.params.generationId, "generationId")
   );
   res.setHeader("Content-Type", content.mimeType);
-  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).send(content.data);
 });
 

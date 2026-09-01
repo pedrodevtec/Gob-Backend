@@ -361,9 +361,10 @@ const legacyOpenApiDocument = {
       },
       ParticipantConsentRequest: {
         type: "object",
-        required: ["status"],
+        required: ["status", "consentVersion"],
         properties: {
-          status: { type: "string", enum: ["ACCEPTED", "DECLINED"] },
+          status: { type: "string", enum: ["ACCEPTED", "DECLINED", "REVOKED"] },
+          consentVersion: { type: "string", description: "Versao exibida ao participante. Divergencia retorna 409." },
           source: { type: "string" },
         },
       },
@@ -2369,11 +2370,21 @@ const legacyOpenApiDocument = {
       },
     },
     "/api/v1/campaigns/public/{slug}/consent": {
+      get: {
+        tags: ["Campaigns"],
+        summary: "Obter consentimento vigente da campanha",
+        description: "Retorna versao, finalidade, usos de dados, texto e regras de revogacao aplicaveis a campanha.",
+        parameters: [slugPathParam],
+        responses: {
+          "200": { description: "Documento vigente retornado" },
+          "404": { $ref: "#/components/responses/NotFound" },
+        },
+      },
       post: {
         tags: ["Campaigns"],
-        summary: "Registrar consentimento do participante",
+        summary: "Consentir, ingressar, recusar ou revogar participacao",
         description:
-          "Registra aceite ou recusa da versao atual do consentimento. Recusa nao cria vinculo com a mesa.",
+          "ACCEPTED persiste consentimento e membership atomicamente e com idempotencia. DECLINED nao cria membership. REVOKED remove o acesso ativo. Nenhum erro deixa aceite parcial.",
         security: authSecurity,
         parameters: [slugPathParam],
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ParticipantConsentRequest" } } } },
@@ -2382,6 +2393,7 @@ const legacyOpenApiDocument = {
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
         },
       },
     },

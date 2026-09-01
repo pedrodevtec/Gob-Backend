@@ -75,12 +75,13 @@ export const validateRecordConsent = (req: Request): void => {
   const body = getBody(req);
   const status = requireString(body.status, "status", 7, 8).toUpperCase() as ParticipantConsentStatus;
 
-  if (!["ACCEPTED", "DECLINED"].includes(status)) {
+  if (!["ACCEPTED", "DECLINED", "REVOKED"].includes(status)) {
     throw new AppError(400, "Status de consentimento invalido.", "INVALID_CONSENT_STATUS");
   }
 
   req.body = {
     status: status as RecordConsentInput["status"],
+    consentVersion: requireString(body.consentVersion, "consentVersion", 1, 80),
     source: optionalString(body.source, "source", 1, 80),
   } satisfies RecordConsentInput;
 };
