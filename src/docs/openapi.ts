@@ -1,3 +1,5 @@
+import { authSessionContract, authSessionPaths, authSessionResponses, authSessionSchemas } from "./auth-session.contract";
+
 const idPathParam = {
   name: "id",
   in: "path",
@@ -3217,4 +3219,22 @@ export const openApiDocument = {
       },
     },
   },
+} as const;
+
+/** Design-time counterpart for #16. Never serve this as the deployed API before #17. */
+export const openApiSessionContractDocument = {
+  ...openApiDocument,
+  info: {
+    ...openApiDocument.info,
+    title: "GOB Backend API — proposed auth/session contract",
+    version: "1.4.0-proposed",
+    description: "Proposta para aprovacao em #16, nao implementada. O documento servido continua sendo openApiDocument.",
+  },
+  "x-auth-session-contract": authSessionContract,
+  components: {
+    ...openApiDocument.components,
+    schemas: { ...openApiDocument.components.schemas, ...authSessionSchemas },
+    responses: { ...openApiDocument.components.responses, ...authSessionResponses },
+  },
+  paths: { ...openApiDocument.paths, ...authSessionPaths },
 } as const;

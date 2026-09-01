@@ -35,6 +35,7 @@
     "test:ai-p1": "node --require ts-node/register src/Modules/ai/__tests__/ai.p1.runner.ts",
     "test:middleware": "node --require ts-node/register src/middleware/__tests__/middleware.runner.ts",
     "test:auth": "node --require ts-node/register src/Modules/auth/__tests__/auth.runner.ts",
+    "test:auth-contract": "node --require ts-node/register src/docs/__tests__/auth-session.contract.runner.ts",
     "test:user-profile": "node --require ts-node/register src/Modules/users/__tests__/user.schema.runner.ts",
     "test:context": "node --require ts-node/register src/Modules/context/__tests__/context.runner.ts",
     "test:context:integration": "node --require ts-node/register src/Modules/context/__tests__/context.integration.runner.ts",
@@ -43,7 +44,7 @@
     "test:campaign-survey": "node --require ts-node/register src/Modules/campaigns/__tests__/campaignPilot.schema.runner.ts",
     "test:playtest-email": "node --require ts-node/register src/Modules/notifications/__tests__/playtestNotification.runner.ts",
     "test:front1": "npm run test:auth && npm run test:context && npm run test:table-package03 && npm run test:ai-context && npm run test:ai && npm run test:ai-p1 && npm run test:middleware",
-    "test": "npm run test:campaign-journey && npm run test:campaign-survey && npm run test:builder-narrative && npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:ai-narrative-input && npm run test:ai-p1 && npm run test:middleware && npm run test:auth && npm run test:user-profile && npm run test:context && npm run test:card-art",
+    "test": "npm run test:auth-contract && npm run test:campaign-journey && npm run test:campaign-survey && npm run test:builder-narrative && npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:ai-narrative-input && npm run test:ai-p1 && npm run test:middleware && npm run test:auth && npm run test:user-profile && npm run test:context && npm run test:card-art",
     "start": "node dist/server.js",
     "test:card-art": "node --require ts-node/register src/Modules/cards/__tests__/characterCardArt.runner.ts"
   },
