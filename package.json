@@ -19,6 +19,8 @@
     "dev": "nodemon src/server.ts",
     "install:build": "npm install && tsc",
     "build": "prisma generate && tsc",
+    "build:vercel": "node scripts/vercel-build.js",
+    "db:migrate:deploy": "prisma migrate deploy",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:seed": "ts-node prisma/seed.ts",

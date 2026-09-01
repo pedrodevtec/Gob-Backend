@@ -3,7 +3,9 @@
 ## Aplicação
 
 1. Fazer backup e impedir rollout parcial do login novo sem a contraparte frontend.
-2. Executar `npx prisma migrate deploy` com a aplicação antiga ainda atendendo.
+2. O build de produção da Vercel executa `npm run db:migrate:deploy` antes de
+   compilar. Se a migration falhar, o deploy deve falhar sem promover a nova
+   aplicação. Preview builds não aplicam DDL.
 3. Publicar o backend e conferir `/docs.json`, login, refresh, logout e `me`.
 4. Publicar a fronteira BFF da issue frontend #32 no mesmo change window.
 5. Confirmar que nenhuma credencial aparece em logs e que `Cache-Control` é `no-store`.
