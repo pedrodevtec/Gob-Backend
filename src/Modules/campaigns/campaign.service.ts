@@ -1,5 +1,6 @@
 import {
   ParticipantConsentStatus,
+  Prisma,
   PublicCampaignStatus,
   TableMemberRole,
   TableMemberStatus,
@@ -128,49 +129,129 @@ export class CampaignService {
   static getConsentDocument() {
     return {
       version: CONSENT_VERSION,
+      title: "Consentimento para participar do piloto",
+      purpose: "Avaliar e melhorar a experiencia do Guardian of Bravantus durante o piloto.",
+      dataUses: [
+        "Respostas e escolhas durante a criacao do personagem",
+        "Interacoes com a IA e feedback enviado",
+        "Dados tecnicos de utilizacao da plataforma",
+      ],
+      voluntary: true,
+      revocable: true,
       text: CONSENT_TEXT,
       requiresLegalReviewBeforeExternalPilot: true,
     };
   }
 
+  static async getCampaignConsentDocument(slug: string) {
+    const campaign = await this.findAvailableCampaignBySlug(slug);
+    return { ...this.getConsentDocument(), version: campaign.consentVersion };
+  }
+
   static async recordConsent(userId: string, slug: string, input: RecordConsentInput) {
     const campaign = await this.findAvailableCampaignBySlug(slug);
-    const now = new Date();
-    const consent = await prisma.participantConsent.upsert({
-      where: {
-        userId_campaignId_consentVersion: {
-          userId,
-          campaignId: campaign.id,
-          consentVersion: campaign.consentVersion,
+    if (input.consentVersion !== campaign.consentVersion) {
+      throw new AppError(409, "A versao do consentimento mudou. Revise o documento atual.", "CONSENT_VERSION_MISMATCH");
+    }
+
+    const source = input.source ?? "campaign_public_flow";
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Table" WHERE id = ${campaign.tableId} FOR UPDATE`;
+      const current = await tx.participantConsent.findUnique({
+        where: {
+          userId_campaignId_consentVersion: {
+            userId,
+            campaignId: campaign.id,
+            consentVersion: campaign.consentVersion,
+          },
         },
-      },
-      create: {
-        userId,
-        campaignId: campaign.id,
-        consentVersion: campaign.consentVersion,
-        status: input.status,
-        source: input.source ?? "campaign_public_flow",
-        acceptedAt: input.status === ParticipantConsentStatus.ACCEPTED ? now : null,
-      },
-      update: {
-        status: input.status,
-        source: input.source ?? "campaign_public_flow",
-        acceptedAt: input.status === ParticipantConsentStatus.ACCEPTED ? now : null,
-        revokedAt: null,
-      },
+      });
+
+      if (input.status === ParticipantConsentStatus.ACCEPTED) {
+        const membership = await this.ensureActiveMembership(tx, campaign.tableId, userId);
+        const now = new Date();
+        const consent = await tx.participantConsent.upsert({
+          where: {
+            userId_campaignId_consentVersion: {
+              userId,
+              campaignId: campaign.id,
+              consentVersion: campaign.consentVersion,
+            },
+          },
+          create: {
+            userId,
+            campaignId: campaign.id,
+            consentVersion: campaign.consentVersion,
+            status: ParticipantConsentStatus.ACCEPTED,
+            source,
+            acceptedAt: now,
+          },
+          update: {
+            status: ParticipantConsentStatus.ACCEPTED,
+            source,
+            acceptedAt: current?.status === ParticipantConsentStatus.ACCEPTED ? current.acceptedAt ?? now : now,
+            revokedAt: null,
+          },
+        });
+        return { consent, membership: membership.value, changed: current?.status !== ParticipantConsentStatus.ACCEPTED || membership.created };
+      }
+
+      const activeMembership = await tx.tableMember.findFirst({
+        where: { tableId: campaign.tableId, userId, status: TableMemberStatus.ACTIVE },
+      });
+      if (input.status === ParticipantConsentStatus.DECLINED && activeMembership) {
+        throw new AppError(409, "Revogue a participacao ativa antes de recusar o consentimento.", "CONSENT_REVOCATION_REQUIRED");
+      }
+
+      if (input.status === ParticipantConsentStatus.REVOKED) {
+        if (!current && !activeMembership) {
+          throw new AppError(409, "Nao existe participacao ativa para revogar.", "CONSENT_NOT_ACCEPTED");
+        }
+        const now = new Date();
+        await tx.participantConsent.updateMany({
+          where: { userId, campaignId: campaign.id, status: ParticipantConsentStatus.ACCEPTED },
+          data: { status: ParticipantConsentStatus.REVOKED, revokedAt: now, source },
+        });
+        await tx.tableMember.updateMany({
+          where: { tableId: campaign.tableId, userId, status: TableMemberStatus.ACTIVE },
+          data: { status: TableMemberStatus.REMOVED },
+        });
+        const consent = await tx.participantConsent.findUnique({
+          where: {
+            userId_campaignId_consentVersion: { userId, campaignId: campaign.id, consentVersion: campaign.consentVersion },
+          },
+        });
+        if (!consent) {
+          throw new AppError(409, "Consentimento atual nao foi aceito.", "CONSENT_NOT_ACCEPTED");
+        }
+        return { consent, membership: null, changed: current?.status === ParticipantConsentStatus.ACCEPTED || Boolean(activeMembership) };
+      }
+
+      const consent = await tx.participantConsent.upsert({
+        where: {
+          userId_campaignId_consentVersion: { userId, campaignId: campaign.id, consentVersion: campaign.consentVersion },
+        },
+        create: { userId, campaignId: campaign.id, consentVersion: campaign.consentVersion, status: input.status, source },
+        update: { status: input.status, source, acceptedAt: null, revokedAt: null },
+      });
+      return { consent, membership: null, changed: current?.status !== input.status };
     });
-    await CampaignPilotService.recordAnalyticsEvent({
+
+    if (result.changed) void CampaignPilotService.recordAnalyticsEvent({
       userId,
       campaignId: campaign.id,
       tableId: campaign.tableId,
       eventKey: "consent_recorded",
-      source: input.source ?? "campaign_public_flow",
+      source,
       metadata: { status: input.status },
-    });
+    }).catch(() => undefined);
 
     return {
-      consent: this.formatConsent(consent),
+      consent: this.formatConsent(result.consent),
       campaign: this.formatPublicCampaign(campaign),
+      membership: result.membership,
+      journeyState: input.status === ParticipantConsentStatus.ACCEPTED ? "BUILDER_REQUIRED" : "CONSENT_REQUIRED",
+      nextRoute: input.status === ParticipantConsentStatus.ACCEPTED ? `/campanhas/${campaign.slug}/personagem` : `/campanhas/${campaign.slug}/consentimento`,
     };
   }
 
@@ -190,51 +271,39 @@ export class CampaignService {
       throw new AppError(409, "Consentimento atual e obrigatorio para entrar na campanha.", "CAMPAIGN_CONSENT_REQUIRED");
     }
 
-    const membership = await prisma.$transaction(async (tx) => {
+    const membershipResult = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Table" WHERE id = ${campaign.tableId} FOR UPDATE`;
-      const table = await tx.table.findUnique({
-        where: { id: campaign.tableId },
-        include: { members: true },
-      });
-
-      if (!table || table.status !== TableStatus.RECRUITING) {
-        throw new AppError(404, "Campanha nao encontrada ou indisponivel.", "PUBLIC_CAMPAIGN_NOT_FOUND");
-      }
-
-      const existing = table.members.find((member) => member.userId === userId);
-      if (existing?.status === TableMemberStatus.ACTIVE) {
-        return existing;
-      }
-      if (existing) {
-        throw new AppError(409, "Participante nao pode reentrar nesta mesa.", "TABLE_MEMBERSHIP_NOT_ELIGIBLE");
-      }
-
-      const activeMembers = table.members.filter((member) => member.status === TableMemberStatus.ACTIVE);
-      if (activeMembers.length >= table.maxPlayers) {
-        throw new AppError(409, "Campanha nao esta aceitando novos participantes.", "PUBLIC_CAMPAIGN_FULL");
-      }
-
-      return tx.tableMember.create({
-        data: {
-          tableId: table.id,
-          userId,
-          role: TableMemberRole.PLAYER,
-          status: TableMemberStatus.ACTIVE,
-        },
-      });
+      return this.ensureActiveMembership(tx, campaign.tableId, userId);
     });
-    await CampaignPilotService.recordAnalyticsEvent({
+    if (membershipResult.created) void CampaignPilotService.recordAnalyticsEvent({
       userId,
       campaignId: campaign.id,
       tableId: campaign.tableId,
       eventKey: "campaign_joined",
       source: "campaign_public_flow",
-    });
+    }).catch(() => undefined);
 
     return {
       campaign: this.formatPublicCampaign(campaign),
-      membership,
+      membership: membershipResult.value,
     };
+  }
+
+  private static async ensureActiveMembership(tx: Prisma.TransactionClient, tableId: string, userId: string) {
+    const table = await tx.table.findUnique({ where: { id: tableId }, include: { members: true } });
+    if (!table || table.status !== TableStatus.RECRUITING) {
+      throw new AppError(404, "Campanha nao encontrada ou indisponivel.", "PUBLIC_CAMPAIGN_NOT_FOUND");
+    }
+    const existing = table.members.find((member) => member.userId === userId);
+    if (existing?.status === TableMemberStatus.ACTIVE) return { value: existing, created: false };
+    if (existing) throw new AppError(409, "Participante nao pode reentrar nesta mesa.", "TABLE_MEMBERSHIP_NOT_ELIGIBLE");
+    if (table.members.filter((member) => member.status === TableMemberStatus.ACTIVE).length >= table.maxPlayers) {
+      throw new AppError(409, "Campanha nao esta aceitando novos participantes.", "PUBLIC_CAMPAIGN_FULL");
+    }
+    const value = await tx.tableMember.create({
+      data: { tableId, userId, role: TableMemberRole.PLAYER, status: TableMemberStatus.ACTIVE },
+    });
+    return { value, created: true };
   }
 
   static async resumePublicCampaign(userId: string, slug: string) {

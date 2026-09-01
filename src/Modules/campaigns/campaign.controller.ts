@@ -41,6 +41,12 @@ export const getConsentDocument = asyncHandler(async (_req: Request, res: Respon
   sendSuccess(res, 200, { consentDocument: CampaignService.getConsentDocument() });
 });
 
+export const getCampaignConsentDocument = asyncHandler(async (req: Request, res: Response) => {
+  const slug = requireString(req.params.slug, "slug", 3, 80);
+  const consentDocument = await CampaignService.getCampaignConsentDocument(slug);
+  sendSuccess(res, 200, { consentDocument });
+});
+
 export const recordConsent = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const slug = requireString(req.params.slug, "slug", 3, 80);

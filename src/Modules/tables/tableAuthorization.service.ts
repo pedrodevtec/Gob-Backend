@@ -1,8 +1,9 @@
-import { TableMemberRole, TableMemberStatus } from "@prisma/client";
+import { ParticipantConsentStatus, TableMemberRole, TableMemberStatus } from "@prisma/client";
 import defaultPrisma from "../../config/db";
 import { AppError } from "../../errors/AppError";
 
-type TableAuthDb = Pick<typeof defaultPrisma, "table" | "tableMember">;
+type TableAuthDb = Pick<typeof defaultPrisma, "table" | "tableMember"> &
+  Partial<Pick<typeof defaultPrisma, "participantConsent">>;
 
 export class TableAuthorizationService {
   private static db: TableAuthDb = defaultPrisma;
@@ -28,6 +29,11 @@ export class TableAuthorizationService {
         userId: true,
         role: true,
         status: true,
+        table: {
+          select: {
+            publicCampaign: { select: { id: true, consentVersion: true } },
+          },
+        },
       },
     });
 
@@ -43,7 +49,25 @@ export class TableAuthorizationService {
       throw new AppError(403, "Acesso restrito a membros ativos da mesa.", "TABLE_MEMBER_REQUIRED");
     }
 
-    return membership;
+    if (membership.role === TableMemberRole.PLAYER && membership.table?.publicCampaign) {
+      const campaign = membership.table.publicCampaign;
+      const consent = await this.db.participantConsent?.findUnique({
+        where: {
+          userId_campaignId_consentVersion: {
+            userId,
+            campaignId: campaign.id,
+            consentVersion: campaign.consentVersion,
+          },
+        },
+        select: { status: true },
+      });
+      if (consent?.status !== ParticipantConsentStatus.ACCEPTED) {
+        throw new AppError(403, "Aceite o consentimento vigente para continuar.", "CURRENT_CONSENT_REQUIRED");
+      }
+    }
+
+    const { table: _table, ...authorizedMembership } = membership;
+    return authorizedMembership;
   }
 
   static async requireTableMaster(tableId: string, userId: string) {
