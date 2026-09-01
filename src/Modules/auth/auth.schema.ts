@@ -1,8 +1,10 @@
 import { Request } from "express";
+import { AppError } from "../../errors/AppError";
 import { getBody, requireEmail, requireString } from "../../utils/validation";
 import {
   ConfirmEmailInput,
   LoginInput,
+  RefreshInput,
   RegisterInput,
   ResendEmailVerificationInput,
 } from "./auth.types";
@@ -23,6 +25,22 @@ export const validateLogin = (req: Request): void => {
   const parsed: LoginInput = {
     email: requireEmail(body.email, "email"),
     senha: requireString(body.senha, "senha", 6, 120),
+  };
+
+  req.body = parsed;
+};
+
+export const validateRefreshToken = (req: Request): void => {
+  const body = getBody(req);
+  if (body.refreshToken === undefined || body.refreshToken === null || body.refreshToken === "") {
+    throw new AppError(
+      401,
+      "Refresh token obrigatorio.",
+      "REFRESH_REQUIRED"
+    );
+  }
+  const parsed: RefreshInput = {
+    refreshToken: requireString(body.refreshToken, "refreshToken", 32, 512),
   };
 
   req.body = parsed;

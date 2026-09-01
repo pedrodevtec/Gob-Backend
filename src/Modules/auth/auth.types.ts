@@ -9,6 +9,10 @@ export interface LoginInput {
   senha: string;
 }
 
+export interface RefreshInput {
+  refreshToken: string;
+}
+
 export interface ConfirmEmailInput {
   token: string;
 }

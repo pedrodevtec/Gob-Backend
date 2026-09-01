@@ -1,6 +1,4 @@
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { env } from "../../config/env";
 import { AppError } from "../../errors/AppError";
 import UserModel from "../users/user.models";
 import { EmailVerificationService } from "./emailVerification.service";
@@ -10,6 +8,7 @@ import {
   RegisterInput,
   ResendEmailVerificationInput,
 } from "./auth.types";
+import { AuthSessionService } from "./authSession.service";
 
 export class AuthService {
   static async register(input: RegisterInput) {
@@ -61,17 +60,14 @@ export class AuthService {
       throw new AppError(403, "Confirme seu e-mail antes de entrar.", "EMAIL_NOT_VERIFIED");
     }
 
-    return {
-      token: this.signToken(user.id, user.accountRole),
-      user: {
-        id: user.id,
-        nome: user.nome,
-        email: user.email,
-        accountRole: user.accountRole,
-        emailVerifiedAt: user.emailVerifiedAt,
-        theme: user.theme ?? null,
-      },
-    };
+    return AuthSessionService.createSession({
+      id: user.id,
+      nome: user.nome,
+      email: user.email,
+      accountRole: user.accountRole,
+      emailVerifiedAt: user.emailVerifiedAt,
+      theme: user.theme ?? null,
+    });
   }
 
   static async confirmEmail(input: ConfirmEmailInput) {
@@ -80,9 +76,5 @@ export class AuthService {
 
   static async resendEmailVerification(input: ResendEmailVerificationInput) {
     return EmailVerificationService.resend(input.email);
-  }
-
-  private static signToken(userId: string, accountRole: "USER" | "ADMIN"): string {
-    return jwt.sign({ id: userId, accountRole }, env.JWT_SECRET, { expiresIn: "1h" });
   }
 }

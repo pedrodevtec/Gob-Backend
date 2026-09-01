@@ -79,7 +79,7 @@ const campaignIdPathParam = {
 
 const authSecurity = [{ bearerAuth: [] }] as const;
 
-export const openApiDocument = {
+const legacyOpenApiDocument = {
   openapi: "3.0.3",
   info: {
     title: "GOB Backend API",
@@ -3221,20 +3221,21 @@ export const openApiDocument = {
   },
 } as const;
 
-/** Design-time counterpart for #16. Never serve this as the deployed API before #17. */
-export const openApiSessionContractDocument = {
-  ...openApiDocument,
+/** Official session contract implemented by #17 and served through /docs.json. */
+export const openApiDocument = {
+  ...legacyOpenApiDocument,
   info: {
-    ...openApiDocument.info,
-    title: "GOB Backend API — proposed auth/session contract",
-    version: "1.4.0-proposed",
-    description: "Proposta para aprovacao em #16, nao implementada. O documento servido continua sendo openApiDocument.",
+    ...legacyOpenApiDocument.info,
+    version: "1.4.0",
   },
   "x-auth-session-contract": authSessionContract,
   components: {
-    ...openApiDocument.components,
-    schemas: { ...openApiDocument.components.schemas, ...authSessionSchemas },
-    responses: { ...openApiDocument.components.responses, ...authSessionResponses },
+    ...legacyOpenApiDocument.components,
+    schemas: { ...legacyOpenApiDocument.components.schemas, ...authSessionSchemas },
+    responses: { ...legacyOpenApiDocument.components.responses, ...authSessionResponses },
   },
-  paths: { ...openApiDocument.paths, ...authSessionPaths },
+  paths: { ...legacyOpenApiDocument.paths, ...authSessionPaths },
 } as const;
+
+/** Kept as a compatibility export for the review tooling introduced in #16. */
+export const openApiSessionContractDocument = openApiDocument;

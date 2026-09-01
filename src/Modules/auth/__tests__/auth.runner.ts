@@ -9,6 +9,7 @@ import { requestContext } from "../../../middleware/requestContext";
 import UserModel from "../../users/user.models";
 import authRoutes from "../auth.routes";
 import { AuthService } from "../auth.service";
+import { AuthSessionService } from "../authSession.service";
 import {
   ResendEmailSender,
   resetEmailSenderForTests,
@@ -554,13 +555,24 @@ void (async () => {
     const user = await verifiedUser();
     const originalFindByEmail = UserModel.findByEmail;
     UserModel.findByEmail = async () => user;
+    const originalCreateSession = AuthSessionService.createSession;
+    AuthSessionService.createSession = (async (sessionUser: any) => ({
+      accessToken: "access-token",
+      accessTokenExpiresAt: new Date(Date.now() + 600_000),
+      refreshToken: "refresh-token-with-at-least-thirty-two-characters",
+      refreshTokenExpiresAt: new Date(Date.now() + 604_800_000),
+      session: { id: "session-1", expiresAt: new Date(Date.now() + 604_800_000) },
+      user: sessionUser,
+    })) as typeof AuthSessionService.createSession;
 
     try {
       const result = await AuthService.login({ email: user.email, senha: "segredo123" });
-      assert.equal(typeof result.token, "string");
+      assert.equal(typeof result.accessToken, "string");
+      assert.equal("token" in result, false);
       assert.equal(result.user.emailVerifiedAt, user.emailVerifiedAt);
     } finally {
       UserModel.findByEmail = originalFindByEmail;
+      AuthSessionService.createSession = originalCreateSession;
     }
   });
 
@@ -568,6 +580,15 @@ void (async () => {
     const existingUser = await verifiedUser("existente@example.com");
     const originalFindByEmail = UserModel.findByEmail;
     UserModel.findByEmail = async () => existingUser;
+    const originalCreateSession = AuthSessionService.createSession;
+    AuthSessionService.createSession = (async (sessionUser: any) => ({
+      accessToken: "access-token",
+      accessTokenExpiresAt: new Date(Date.now() + 600_000),
+      refreshToken: "refresh-token-with-at-least-thirty-two-characters",
+      refreshTokenExpiresAt: new Date(Date.now() + 604_800_000),
+      session: { id: "session-2", expiresAt: new Date(Date.now() + 604_800_000) },
+      user: sessionUser,
+    })) as typeof AuthSessionService.createSession;
 
     try {
       const result = await AuthService.login({
@@ -577,6 +598,7 @@ void (async () => {
       assert.equal(result.user.email, existingUser.email);
     } finally {
       UserModel.findByEmail = originalFindByEmail;
+      AuthSessionService.createSession = originalCreateSession;
     }
   });
 

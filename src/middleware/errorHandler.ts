@@ -29,8 +29,8 @@ export const errorHandler = (
         code: error.code,
         message: error.message,
         details: error.details,
+        requestId: req.requestId,
       },
-      requestId: req.requestId,
     });
     return;
   }
@@ -42,8 +42,8 @@ export const errorHandler = (
         error: {
           code: "CONFLICT",
           message: "Recurso ja existe.",
+          requestId: req.requestId,
         },
-        requestId: req.requestId,
       });
       return;
     }
@@ -54,8 +54,8 @@ export const errorHandler = (
         error: {
           code: "NOT_FOUND",
           message: "Recurso nao encontrado.",
+          requestId: req.requestId,
         },
-        requestId: req.requestId,
       });
       return;
     }
@@ -68,7 +68,7 @@ export const errorHandler = (
     error: {
       code: "INTERNAL_SERVER_ERROR",
       message: "Erro interno do servidor.",
+      requestId: req.requestId,
     },
-    requestId: req.requestId,
   });
 };
