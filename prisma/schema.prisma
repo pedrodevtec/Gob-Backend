@@ -249,6 +249,17 @@ enum GuardianAvatarKey {
   guardian_explorer
 }
 
+enum AuthSessionRevokeReason {
+  LOGOUT
+  REFRESH_TOKEN_REUSED
+  SESSION_EXPIRED
+  ACCOUNT_ROLE_CHANGED
+  MEMBERSHIP_CHANGED
+  USER_DELETED
+  PASSWORD_CHANGED
+  SECURITY
+}
+
 model User {
   id                      String                   @id @default(uuid())
   nome                    String
@@ -292,6 +303,41 @@ model User {
   analyticsEvents         AnalyticsEvent[]            @relation("AnalyticsEventUser")
   characterLegacyAdaptations CharacterLegacyAdaptation[] @relation("CharacterLegacyAdaptationAdmin")
   characterCardArtGenerations CharacterCardArtGeneration[]
+  authSessions             AuthSession[]
+}
+
+model AuthSession {
+  id            String                   @id @default(uuid())
+  userId        String
+  familyId      String                   @unique @default(uuid())
+  createdAt     DateTime                 @default(now())
+  expiresAt     DateTime
+  lastUsedAt    DateTime?
+  revokedAt     DateTime?
+  revokeReason  AuthSessionRevokeReason?
+
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens AuthRefreshToken[]
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([familyId, revokedAt])
+}
+
+model AuthRefreshToken {
+  id                String            @id @default(uuid())
+  sessionId         String
+  tokenHash         String            @unique
+  createdAt         DateTime          @default(now())
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  replacedByTokenId String?           @unique
+
+  session           AuthSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  replacedBy        AuthRefreshToken?  @relation("AuthRefreshRotation", fields: [replacedByTokenId], references: [id], onDelete: SetNull)
+  replaces          AuthRefreshToken?  @relation("AuthRefreshRotation")
+
+  @@index([sessionId, createdAt])
+  @@index([sessionId, consumedAt, expiresAt])
 }
 
 model EmailVerificationToken {

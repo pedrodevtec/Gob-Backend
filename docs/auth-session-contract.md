@@ -1,7 +1,7 @@
 # Contraparte backend — sessão do Piloto (issue #16)
 
-Status: **proposta para aprovação**, não implementada. O merge desta proposta
-registra a decisão backend; não comprova a execução dos cenários de integração.
+Status: **aprovado e implementado no backend pela issue #17**. A implementação
+automatizada não substitui a comprovação E2E com frontend e banco do ambiente do Piloto.
 Responsáveis pela aprovação: Product Owner e responsáveis pelos dois repositórios.
 
 ## Fontes e escopo
@@ -14,22 +14,23 @@ Responsáveis pela aprovação: Product Owner e responsáveis pelos dois reposit
 
 O contrato backend é exportado por `src/docs/openapi.ts` como
 `openApiSessionContractDocument`. Ele compõe os endpoints existentes com os DTOs
-e operações propostos de `src/docs/auth-session.contract.ts`. Os nomes dos schemas
+e operações implementados de `src/docs/auth-session.contract.ts`. Os nomes dos schemas
 recebem prefixo `AuthSession` para não substituir os schemas legados; o payload
 mantém os campos do contrato compartilhado. Rotas `/api/auth/*` são do Next BFF,
 nunca rotas Express.
 
-`openApiDocument`, usado por `/docs.json` e `/docs`, continua documentando a API
-vigente. Não trocar o export consumido por `src/app.ts` nem gerar o cliente de
-produção a partir da proposta antes de implementar #17. A exportação de revisão
-é serializável sem carregar app, banco, variáveis de ambiente ou servidor:
+`openApiDocument`, usado por `/docs.json` e `/docs`, agora incorpora as operações
+implementadas. `openApiSessionContractDocument` permanece como alias compatível
+para o ferramental de revisão criado na #16. A exportação é serializável sem
+carregar app, banco, variáveis de ambiente ou servidor:
 
 ```sh
 node -r ts-node/register -e 'console.log(JSON.stringify(require("./src/docs/openapi").openApiSessionContractDocument, null, 2))'
 npm run test:auth-contract
 ```
 
-Esta PR não modifica handlers, middleware, Prisma, cookies ou autorização.
+O backend implementa handlers, middleware e persistência. Cookies continuam sob
+responsabilidade do BFF frontend na issue #32.
 
 ## Comportamento alvo
 
@@ -110,22 +111,20 @@ sessão/cache. Este esclarecimento deve ser refletido na ADR frontend ao executa
 | Sem capability/e-mail não confirmado | 403 `FORBIDDEN` / `EMAIL_NOT_VERIFIED` | Exibir bloqueio; nunca renovar por 403 |
 | Rate limit | 429 `RATE_LIMIT_EXCEEDED` | Respeitar limitação; sem retry imediato em loop |
 
-## Migração e rollback planejados (não executados)
+## Migração e rollback
 
-1. Aprovar #16 e registrar o esclarecimento de concorrência e a política de
-   revogação. #29/#32 do frontend e #17 do backend continuam bloqueadas até isso.
-2. Em #17: criar migration aditiva e índices, histórico de rotação e testes com
-   banco real. Publicar operações oficiais implementadas e definir rollout
-   compatível para o frontend legado antes de alterar login.
-3. Em #32: BFF com `HttpOnly; Secure; SameSite=Lax; Path=/`, sem `Domain` em produção,
+1. #16 foi aprovada pela PR #20. #17 implementa migration aditiva, índices,
+   histórico de rotação, endpoints e um runner de integração PostgreSQL.
+2. Executar migration e runner de integração em banco isolado antes do rollout;
+   esta sessão não aplicou DDL em banco compartilhado.
+3. Em #32: criar BFF com `HttpOnly; Secure; SameSite=Lax; Path=/`, sem `Domain` em produção,
    validação de Origin, access em memória e migração conjunta de store/bootstrap/
    Axios/middleware/logout. Remover credenciais persistidas no cliente.
-4. Executar a matriz abaixo antes do convite externo. Promover a especificação
-   proposta para o documento servido somente junto da implementação correspondente.
+4. Executar a matriz abaixo antes do convite externo. O OpenAPI oficial já expõe
+   as operações implementadas para o consumidor frontend.
 5. Rollback de aplicação deve manter revogações efetivas: não reativar validador
    de JWT legado que ignora sessão. Em falha, bloquear autenticação/convites e
-   preservar tabelas/histórico até correção. #17 deve trazer comandos de migration
-   e procedimento de reversão testados; esta proposta não executa DDL.
+   preservar tabelas/histórico até correção. O runbook registra aplicação e reversão.
 
 ## Matriz integrada acordada para implementação
 
@@ -150,13 +149,13 @@ senhas, hashes de refresh ou conteúdo privado.
 | Backend indisponível no logout | BFF 503 local_only, cookie/cache limpos, sem falsa confirmação remota |
 | Cache, CSRF, segredo e retorno | no-store, Origin recusado, cookie HttpOnly, sem token persistido em JS, returnTo externo rejeitado |
 
-## Checklist de aprovação
+## Checklist do gate
 
-- [ ] Responsáveis backend/frontend aprovam payloads e HTTP da proposta.
-- [ ] Aprovar semântica de concorrência, perda de resposta e logout de família.
-- [ ] Aprovar efeito global da revogação por remoção/mudança de papel.
-- [ ] Aceitar prazo deslizante de 7 dias e plano de rollout/rollback.
-- [ ] Transferir execução da matriz para #17 e #32; não marcar E2E como aprovado.
+- [x] Payloads, HTTP, concorrência, logout de família e prazo aprovados na PR #20.
+- [x] Persistência, endpoints, middleware, OpenAPI, migration e testes automatizados implementados em #17.
+- [ ] Migration e runner de integração executados em PostgreSQL isolado.
+- [ ] BFF, cookie HttpOnly e coordenação entre abas implementados no frontend #32.
+- [ ] Matriz E2E comprovada com frontend, backend e banco reais.
 
-Após esse gate: #17 → frontend #32 → backend #19/frontend #36 →
+Próxima sequência: frontend #32 → backend #19/frontend #36 →
 backend #18/frontend #35, respeitando a publicação dos contratos oficiais.

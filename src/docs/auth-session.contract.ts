@@ -1,7 +1,5 @@
 /**
- * Backend counterpart of GOB-Frontend#31, pending approval in Gob-Backend#16.
- * This is a design-time contract, NOT a claim that the handlers are deployed.
- * Keep the currently served OpenAPI unchanged until implementation in #17.
+ * Implemented backend counterpart of GOB-Frontend#31 and Gob-Backend#16.
  */
 const schemaRef = (name: string) => ({ $ref: `#/components/schemas/AuthSession${name}` });
 const responseRef = (name: string) => ({ $ref: `#/components/responses/AuthSession${name}` });
@@ -26,13 +24,13 @@ const error = (description: string) => ({
 const operation = {
   tags: ["Auth"],
   "x-owner": "Gob-Backend",
-  "x-implementation-status": "not-implemented",
-  description: "Contrato proposto para aprovacao em #16; implementacao depende de #17.",
+  "x-implementation-status": "implemented",
+  description: "Contrato de sessao implementado pela Story 1.2 no Gob-Backend#17.",
 };
 
 export const authSessionContract = {
-  version: "1.0.0-proposed",
-  status: "proposed",
+  version: "1.0.0",
+  status: "implemented",
   approvalIssue: "https://github.com/pedrodevtec/Gob-Backend/issues/16",
   implementationIssue: "https://github.com/pedrodevtec/Gob-Backend/issues/17",
   source: "https://github.com/pedrodevtec/GOB-Frontend/pull/31",
