@@ -36,6 +36,16 @@ export const resendEmailVerification = asyncHandler(async (req: Request, res: Re
   sendSuccess(res, 200, { message: result.message });
 });
 
+export const requestPasswordReset = asyncHandler(async (req: Request, res: Response) => {
+  const result = await AuthService.requestPasswordReset(req.body);
+  sendSuccess(res, 200, { message: result.message });
+});
+
+export const confirmPasswordReset = asyncHandler(async (req: Request, res: Response) => {
+  const result = await AuthService.confirmPasswordReset(req.body);
+  sendSuccess(res, 200, result);
+});
+
 export const me = asyncHandler(async (req: Request, res: Response) => {
   const userId = requireUserId(req);
   const user = await UserModel.findPublicById(userId);

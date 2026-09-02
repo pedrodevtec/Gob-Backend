@@ -20,3 +20,12 @@ export interface ConfirmEmailInput {
 export interface ResendEmailVerificationInput {
   email: string;
 }
+
+export interface RequestPasswordResetInput {
+  email: string;
+}
+
+export interface ConfirmPasswordResetInput {
+  token: string;
+  novaSenha: string;
+}

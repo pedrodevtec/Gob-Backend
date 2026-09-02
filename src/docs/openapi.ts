@@ -982,6 +982,21 @@ const legacyOpenApiDocument = {
           email: { type: "string", format: "email" },
         },
       },
+      RequestPasswordResetRequest: {
+        type: "object",
+        required: ["email"],
+        properties: {
+          email: { type: "string", format: "email" },
+        },
+      },
+      ConfirmPasswordResetRequest: {
+        type: "object",
+        required: ["token", "novaSenha"],
+        properties: {
+          token: { type: "string", minLength: 20, writeOnly: true },
+          novaSenha: { type: "string", minLength: 6, maxLength: 120, writeOnly: true },
+        },
+      },
       UpdateProfileRequest: {
         type: "object",
         properties: {
@@ -2536,6 +2551,24 @@ const legacyOpenApiDocument = {
         summary: "Reenviar confirmacao de e-mail",
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ResendEmailVerificationRequest" } } } },
         responses: { "200": { description: "Solicitacao processada" }, "400": { $ref: "#/components/responses/BadRequest" }, "429": { description: "Cooldown ou rate limit excedido" } },
+      },
+    },
+    "/api/v1/auth/password-reset/request": {
+      post: {
+        tags: ["Auth"],
+        summary: "Solicitar redefinicao de senha",
+        description: "Sempre retorna resposta generica para nao revelar se o e-mail esta cadastrado.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RequestPasswordResetRequest" } } } },
+        responses: { "200": { description: "Solicitacao processada" }, "400": { $ref: "#/components/responses/BadRequest" }, "429": { description: "Rate limit excedido" } },
+      },
+    },
+    "/api/v1/auth/password-reset/confirm": {
+      post: {
+        tags: ["Auth"],
+        summary: "Confirmar redefinicao de senha",
+        description: "Consome o token uma unica vez, altera a senha e revoga todas as sessoes ativas.",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ConfirmPasswordResetRequest" } } } },
+        responses: { "200": { description: "Senha redefinida" }, "400": { $ref: "#/components/responses/BadRequest" }, "429": { description: "Rate limit excedido" } },
       },
     },
     "/api/v1/auth/me": { get: { tags: ["Auth"], summary: "Obter usuario autenticado", security: authSecurity, responses: { "200": { description: "Usuario autenticado" }, "401": { $ref: "#/components/responses/Unauthorized" } } } },
