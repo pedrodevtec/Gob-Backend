@@ -270,6 +270,7 @@ model User {
   theme                   String?
   selectedGuardianAvatar  GuardianAvatarKey?
   emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens      PasswordResetToken[]
   characters              Character[]              @relation("UserToCharacter")
   paymentOrders           PaymentOrder[]
   masteredTables          Table[]                  @relation("TableMaster")
@@ -341,6 +342,19 @@ model AuthRefreshToken {
 }
 
 model EmailVerificationToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, expiresAt])
+}
+
+model PasswordResetToken {
   id         String    @id @default(uuid())
   userId     String
   tokenHash  String    @unique

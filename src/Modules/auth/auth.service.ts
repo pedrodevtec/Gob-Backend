@@ -4,11 +4,14 @@ import UserModel from "../users/user.models";
 import { EmailVerificationService } from "./emailVerification.service";
 import {
   ConfirmEmailInput,
+  ConfirmPasswordResetInput,
   LoginInput,
   RegisterInput,
+  RequestPasswordResetInput,
   ResendEmailVerificationInput,
 } from "./auth.types";
 import { AuthSessionService } from "./authSession.service";
+import { PasswordResetService } from "./passwordReset.service";
 
 export class AuthService {
   static async register(input: RegisterInput) {
@@ -76,5 +79,13 @@ export class AuthService {
 
   static async resendEmailVerification(input: ResendEmailVerificationInput) {
     return EmailVerificationService.resend(input.email);
+  }
+
+  static async requestPasswordReset(input: RequestPasswordResetInput) {
+    return PasswordResetService.request(input.email);
+  }
+
+  static async confirmPasswordReset(input: ConfirmPasswordResetInput) {
+    return PasswordResetService.confirm(input.token, input.novaSenha);
   }
 }

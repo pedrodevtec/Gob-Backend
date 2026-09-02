@@ -3,8 +3,10 @@ import { AppError } from "../../errors/AppError";
 import { getBody, requireEmail, requireString } from "../../utils/validation";
 import {
   ConfirmEmailInput,
+  ConfirmPasswordResetInput,
   LoginInput,
   RefreshInput,
+  RequestPasswordResetInput,
   RegisterInput,
   ResendEmailVerificationInput,
 } from "./auth.types";
@@ -62,4 +64,17 @@ export const validateResendEmailVerification = (req: Request): void => {
   };
 
   req.body = parsed;
+};
+
+export const validateRequestPasswordReset = (req: Request): void => {
+  const body = getBody(req);
+  req.body = { email: requireEmail(body.email, "email") } satisfies RequestPasswordResetInput;
+};
+
+export const validateConfirmPasswordReset = (req: Request): void => {
+  const body = getBody(req);
+  req.body = {
+    token: requireString(body.token, "token", 20, 500),
+    novaSenha: requireString(body.novaSenha, "novaSenha", 6, 120),
+  } satisfies ConfirmPasswordResetInput;
 };

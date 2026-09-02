@@ -144,6 +144,7 @@ const withFakeSender = (sent: SendEmailVerificationInput[] = [], fail = false) =
         throw new Error(`provider leaked ${input.confirmationUrl}`);
       }
     },
+    async sendPasswordReset() {},
   });
 };
 

@@ -73,6 +73,14 @@ export const env = {
     process.env.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
     60
   ),
+  PASSWORD_RESET_TTL_MINUTES: parsePositiveInt(
+    process.env.PASSWORD_RESET_TTL_MINUTES,
+    30
+  ),
+  PASSWORD_RESET_RESEND_COOLDOWN_SECONDS: parsePositiveInt(
+    process.env.PASSWORD_RESET_RESEND_COOLDOWN_SECONDS,
+    60
+  ),
   PERMISSION_DEBUG: parseBoolean(
     process.env.PERMISSION_DEBUG,
     (process.env.NODE_ENV ?? "development") !== "production"
