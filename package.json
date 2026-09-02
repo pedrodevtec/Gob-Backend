@@ -58,14 +58,14 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
+    "express": "^4.22.2",
     "install": "^0.13.0",
-    "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.12.0",
     "postgres": "^3.4.5",
     "swagger-ui-express": "^5.0.1"
   },
@@ -77,15 +77,24 @@
     "@types/node": "^22.13.10",
     "@types/pg": "^8.11.11",
     "@types/swagger-ui-express": "^4.1.8",
-    "nodemon": "^3.1.9",
-    "prisma": "^6.19.0",
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
   },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    },
+    "express": {
+      "body-parser": "1.20.6",
+      "path-to-regexp": "0.1.13"
+    }
+  },
   "allowScripts": {
-    "@prisma/client@6.19.0": true,
-    "@prisma/engines@6.19.0": true,
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
     "@scarf/scarf@1.4.0": false,
-    "prisma@6.19.0": true
+    "prisma@6.19.3": true
   }
 }
