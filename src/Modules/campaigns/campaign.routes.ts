@@ -4,6 +4,7 @@ import auth from "../../middleware/auth";
 import { validate } from "../../middleware/validate";
 import {
   createPublicCampaign,
+  createOrResumeCampaignCharacterDraft,
   getCampaignOperationalOverview,
   getAdminCampaignBySlug,
   getFinalSurveyConfig,
@@ -40,6 +41,7 @@ router.post("/public/:slug/events", auth, validate(validateRecordAnalyticsEvent)
 router.get("/public/:slug", getPublicCampaign);
 router.get("/public/:slug/consent", getCampaignConsentDocument);
 router.get("/public/:slug/resume", auth, resumePublicCampaign);
+router.post("/public/:slug/character-draft", auth, createOrResumeCampaignCharacterDraft);
 router.post("/public/:slug/consent", auth, validate(validateRecordConsent), recordConsent);
 router.post("/public/:slug/join", auth, joinPublicCampaign);
 
