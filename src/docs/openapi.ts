@@ -368,6 +368,58 @@ const legacyOpenApiDocument = {
           source: { type: "string" },
         },
       },
+      CampaignCharacterDraftResponse: {
+        type: "object",
+        required: ["success", "created", "character", "publicContext", "journeyState", "nextRoute"],
+        properties: {
+          success: { type: "boolean", enum: [true] },
+          created: { type: "boolean", description: "true somente na chamada que criou o rascunho." },
+          character: {
+            type: "object",
+            required: ["id", "sheetStatus", "sheetRevision", "builderConfigVersion"],
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              sheetStatus: { type: "string", enum: ["DRAFT", "SUBMITTED", "CHANGES_REQUESTED", "APPROVED"] },
+              sheetRevision: { type: "integer", minimum: 1 },
+              submittedRevision: { type: "integer", nullable: true },
+              submittedAt: { type: "string", format: "date-time", nullable: true },
+              approvedAt: { type: "string", format: "date-time", nullable: true },
+              builderConfigVersion: { type: "string" },
+            },
+          },
+          publicContext: {
+            type: "object",
+            required: ["id", "version", "status", "setting", "units"],
+            properties: {
+              id: { type: "string" },
+              version: { type: "integer" },
+              layer: { type: "string" },
+              status: { type: "string", enum: ["PUBLISHED"] },
+              setting: { type: "object" },
+              episode: { type: "object", nullable: true },
+              units: {
+                type: "array",
+                minItems: 1,
+                items: {
+                  type: "object",
+                  required: ["id", "classification", "visibility", "title", "content", "sortOrder"],
+                  properties: {
+                    id: { type: "string" },
+                    classification: { type: "string", not: { enum: ["SECRET_CANON"] } },
+                    visibility: { type: "string", enum: ["PUBLIC"] },
+                    title: { type: "string" },
+                    content: { type: "string" },
+                    sortOrder: { type: "integer" },
+                  },
+                },
+              },
+            },
+          },
+          journeyState: { type: "string" },
+          nextRoute: { type: "string", pattern: "^/campanhas/" },
+        },
+      },
       FinalSurveySubmitRequest: {
         type: "object",
         required: [
@@ -2427,6 +2479,26 @@ const legacyOpenApiDocument = {
         },
       },
     },
+    "/api/v1/campaigns/public/{slug}/character-draft": {
+      post: {
+        tags: ["Campaigns"],
+        summary: "Criar ou retomar o personagem da campanha",
+        description:
+          "Operacao atomica e idempotente. Revalida campanha, consentimento, membership PLAYER ativa e ContextVersion publicada; chamadas concorrentes retornam o mesmo Character.id. A resposta inclui somente unidades PUBLIC e bloqueia SECRET_CANON.",
+        security: authSecurity,
+        parameters: [slugPathParam],
+        responses: {
+          "200": {
+            description: "Rascunho criado ou personagem existente retomado",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/CampaignCharacterDraftResponse" } } },
+          },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "403": { $ref: "#/components/responses/Forbidden" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "409": { $ref: "#/components/responses/Conflict" },
+        },
+      },
+    },
     "/api/v1/campaigns/public/{slug}/join": {
       post: {
         tags: ["Campaigns"],
@@ -3271,7 +3343,7 @@ export const openApiDocument = {
   ...legacyOpenApiDocument,
   info: {
     ...legacyOpenApiDocument.info,
-    version: "1.4.0",
+    version: "1.5.0",
   },
   "x-auth-session-contract": authSessionContract,
   components: {

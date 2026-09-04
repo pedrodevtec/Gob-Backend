@@ -48,9 +48,11 @@
     "test:campaign-survey": "node --require ts-node/register src/Modules/campaigns/__tests__/campaignPilot.schema.runner.ts",
     "test:campaign-participation": "node --require ts-node/register src/Modules/campaigns/__tests__/campaignParticipation.runner.ts",
     "test:campaign-participation:integration": "node --require ts-node/register src/Modules/campaigns/__tests__/campaignParticipation.integration.runner.ts",
+    "test:campaign-character-draft": "node --require ts-node/register src/Modules/campaigns/__tests__/campaignCharacterDraft.runner.ts",
+    "test:campaign-character-draft:integration": "node --require ts-node/register src/Modules/campaigns/__tests__/campaignCharacterDraft.integration.runner.ts",
     "test:playtest-email": "node --require ts-node/register src/Modules/notifications/__tests__/playtestNotification.runner.ts",
     "test:front1": "npm run test:auth && npm run test:context && npm run test:table-package03 && npm run test:ai-context && npm run test:ai && npm run test:ai-p1 && npm run test:middleware",
-    "test": "npm run test:auth-contract && npm run test:auth-session && npm run test:password-reset && npm run test:campaign-journey && npm run test:campaign-survey && npm run test:builder-narrative && npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:ai-narrative-input && npm run test:ai-p1 && npm run test:middleware && npm run test:auth && npm run test:user-profile && npm run test:context && npm run test:card-art",
+    "test": "npm run test:auth-contract && npm run test:auth-session && npm run test:password-reset && npm run test:campaign-journey && npm run test:campaign-survey && npm run test:campaign-character-draft && npm run test:builder-narrative && npm run test:combat && npm run test:market && npm run test:table-overview && npm run test:ai && npm run test:ai-context && npm run test:ai-narrative-input && npm run test:ai-p1 && npm run test:middleware && npm run test:auth && npm run test:user-profile && npm run test:context && npm run test:card-art",
     "start": "node dist/server.js",
     "test:card-art": "node --require ts-node/register src/Modules/cards/__tests__/characterCardArt.runner.ts",
     "build:vercel": "node scripts/vercel-build.js"

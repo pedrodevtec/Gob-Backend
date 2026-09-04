@@ -3,6 +3,7 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { sendSuccess } from "../../utils/http";
 import { requireString, requireUserId } from "../../utils/validation";
 import { CampaignPilotService } from "./campaignPilot.service";
+import { CampaignCharacterDraftService } from "./campaignCharacterDraft.service";
 import { CampaignService } from "./campaign.service";
 
 export const createPublicCampaign = asyncHandler(async (req: Request, res: Response) => {
@@ -66,6 +67,29 @@ export const resumePublicCampaign = asyncHandler(async (req: Request, res: Respo
   const slug = requireString(req.params.slug, "slug", 3, 80);
   const resume = await CampaignService.resumePublicCampaign(userId, slug);
   sendSuccess(res, 200, { resume });
+});
+
+export const createOrResumeCampaignCharacterDraft = asyncHandler(async (req: Request, res: Response) => {
+  const userId = requireUserId(req);
+  const slug = requireString(req.params.slug, "slug", 3, 80);
+  const result = await CampaignCharacterDraftService.createOrResume(userId, slug);
+  if (result.created) {
+    await CampaignPilotService.recordAnalyticsEvent({
+      userId,
+      campaignId: result.campaignId,
+      tableId: result.tableId,
+      characterId: result.character.id,
+      eventKey: "character_builder_started",
+      source: "campaign_public_flow",
+    }).catch(() => undefined);
+  }
+  sendSuccess(res, 200, {
+    created: result.created,
+    character: result.character,
+    publicContext: result.publicContext,
+    journeyState: result.journeyState,
+    nextRoute: result.nextRoute,
+  });
 });
 
 export const getFinalSurveyConfig = asyncHandler(async (_req: Request, res: Response) => {
