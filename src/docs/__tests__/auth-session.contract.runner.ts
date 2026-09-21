@@ -9,7 +9,8 @@ const deployed = JSON.parse(JSON.stringify(openApiDocument));
 
 test("implemented session contract is the deployed OpenAPI contract", () => {
   assert.equal(deployed["x-auth-session-contract"].status, "implemented");
-  assert.equal(deployed.info.version, "1.4.0");
+  // The overall API version also changes for non-authentication modules.
+  assert.match(deployed.info.version, /^\d+\.\d+\.\d+$/);
   assert.ok(deployed.paths["/api/v1/auth/refresh"]);
   assert.ok(deployed.paths["/api/v1/auth/logout"]);
   assert.ok(deployed.components.schemas.AuthSessionTokenResponse);
